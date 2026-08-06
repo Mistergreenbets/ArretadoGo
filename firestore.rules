@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isMotoboy() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/motoboys/$(request.auth.uid));
+    }
+
+    // CORRIGIDO: antes isso era "qualquer usuário autenticado que não seja motoboy",
+    // o que deixava a loja inteira aberta pra qualquer conta nova criada no Firebase Auth.
+    // Agora confere de verdade a allowlist em /admins, igual o admin.js já faz no client.
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /produtos/{produtoId} {
+      allow read: if true;       // loja pública lê produtos
+      allow write: if isAdmin(); // só admin cria/edita/apaga
+    }
+
+    match /configuracoes/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /motoboys/{uid} {
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+      allow write: if isAdmin();
+    }
+
+    // Allowlist de admins. Só é criada/editada manualmente pelo Console do Firebase
+    // (não existe função no client pra escrever aqui) — mas trava o acesso via regra
+    // também, caso alguém tente escrever direto.
+    match /admins/{uid} {
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+      allow write: if isAdmin();
+    }
+
+    match /pedidos/{pedidoId} {
+      // Cliente cria pedido pelo checkout, sem estar logado — mas agora valida o
+      // formato mínimo esperado, pra impedir que alguém mande um pedido já
+      // "entregue", com total negativo, ou com campos arbitrários.
+      allow create: if
+        request.resource.data.keys().hasOnly([
+          'codigoPedido', 'nome', 'telefone', 'tipoEntrega', 'endereco',
+          'bairro', 'observacoes', 'itens', 'total', 'criadoEm', 'status'
+        ]) &&
+        request.resource.data.keys().hasAll(['nome', 'telefone', 'itens', 'total', 'status']) &&
+        request.resource.data.status == 'pendente' &&
+        request.resource.data.nome is string && request.resource.data.nome.size() > 0 && request.resource.data.nome.size() < 200 &&
+        request.resource.data.telefone is string && request.resource.data.telefone.size() > 0 &&
+        request.resource.data.tipoEntrega in ['retirada', 'delivery'] &&
+        request.resource.data.itens is list && request.resource.data.itens.size() > 0 && request.resource.data.itens.size() < 100 &&
+        request.resource.data.total is number && request.resource.data.total > 0;
+
+      // "get" (ler UM pedido pelo ID) é público — é assim que a página de rastreamento
+      // funciona sem exigir login do cliente. O ID do documento é um código longo e
+      // aleatório do Firestore (não é sequencial nem adivinhável), então isso funciona
+      // como um "link secreto": só quem tem o link/QR consegue ler aquele pedido específico.
+      // "list" (buscar/listar TODOS os pedidos) continua travado só pra admin/motoboy —
+      // ninguém consegue "passear" pela coleção inteira sem autorização.
+      allow get: if true;
+      allow list: if isAdmin() || isMotoboy();
+
+      allow update: if isAdmin() || (
+        isMotoboy() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'localizacaoAtual']) &&
+        request.resource.data.status in ['saiu_entrega', 'entregue']
+      ) || (
+        // Cliente (sem login) pode registrar o token de notificação push do PRÓPRIO
+        // pedido na página de rastreamento — só esse campo, nada mais.
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tokenNotificacao']) &&
+        request.resource.data.tokenNotificacao is string &&
+        request.resource.data.tokenNotificacao.size() < 4096
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}

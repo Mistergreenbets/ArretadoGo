@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArretadoGo - Delivery de Comida Premium</title>
+
+    <meta name="description" content="Peça hambúrgueres, pizzas e muito mais com entrega rápida no seu bairro. Cardápio completo, pedido fácil pelo WhatsApp.">
+
+    <!-- Open Graph (preview ao compartilhar no WhatsApp/Instagram/Facebook) -->
+    <meta property="og:title" content="ArretadoGo - Delivery de Comida Premium">
+    <meta property="og:description" content="Peça hambúrgueres, pizzas e muito mais com entrega rápida no seu bairro.">
+    <meta property="og:image" content="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&h=600&fit=crop">
+    <meta property="og:type" content="website">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="ArretadoGo - Delivery de Comida Premium">
+    <meta name="twitter:description" content="Peça hambúrgueres, pizzas e muito mais com entrega rápida no seu bairro.">
+
+    <link rel="icon" type="image/png" href="favicon.png?v=1">
+    <link rel="icon" href="favicon.ico?v=1" sizes="any">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
+
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .input-error {
+            border: 2px solid #e53e3e !important;
+            background: #fff5f5;
+        }
+        .logo-img {
+            height: 44px;
+            width: auto;
+            display: block;
+        }
+        .option-group {
+            margin-top: 16px;
+        }
+        .option-group-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .option-group-hint {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        .option-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .option-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .option-item input {
+            cursor: pointer;
+        }
+        .option-item.disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        .option-item .option-price {
+            margin-left: auto;
+            color: #666;
+            font-size: 13px;
+        }
+        .item-total-line {
+            margin-top: 10px;
+            font-weight: 600;
+            font-size: 15px;
+        }
+    </style>
+</head>
+<body>
+    <!-- HEADER FIXO -->
+    <header class="header">
+        <div class="container header-content">
+            <div class="logo">
+                <img src="logo.png?v=1" alt="ArretadoGo" class="logo-img">
+            </div>
+            
+            <nav class="nav">
+                <a href="#" class="nav-link">Home</a>
+                <a href="#produtos" class="nav-link">Menu</a>
+                <a href="#sobre" class="nav-link">Sobre</a>
+                <a href="admin.html" class="nav-link admin-link">Admin</a>
+            </nav>
+
+            <div class="header-actions">
+                <input type="text" id="searchInput" class="search-input" placeholder="Buscar produtos...">
+                <button class="cart-btn" id="cartBtn">
+                    🛒 <span class="cart-count" id="cartCount">0</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- BANNER DE STATUS DA LOJA (aberta/fechada), controlado pelo horário de funcionamento no admin -->
+    <div class="store-status-banner" id="storeStatusBanner" style="display:none;"></div>
+
+    <!-- HERO SECTION -->
+    <!-- Começa escondida (hero-loading) até o script logo abaixo (cache local) ou o app.js
+         (Firestore) preencherem o texto configurado no admin — evita mostrar o texto de
+         fábrica por uma fração de segundo antes do texto real aparecer. -->
+    <section class="hero hero-loading" id="heroSection">
+        <div class="container hero-content">
+            <div class="hero-text">
+                <h2 class="hero-title"><span id="heroPrefixoTexto">Aproveite Sua</span> <span class="highlight" id="heroDestaqueTexto">Comida Deliciosa</span></h2>
+                <p class="hero-subtitle" id="heroSubtituloTexto">Entregamos sua comida em até 30 minutos no seu bairro. Qualidade e agilidade garantidas!</p>
+                <button class="btn btn-primary" id="scrollMenuBtn"><span id="heroBotaoTextoEl">Pedir Agora</span></button>
+                <div class="social-proof">
+                    <div class="proof-item">
+                        <strong id="heroStat1ValorEl">12k+</strong>
+                        <span id="heroStat1LabelEl">Pedidos</span>
+                    </div>
+                    <div class="proof-item">
+                        <strong id="heroStat2ValorEl">4.8★</strong>
+                        <span id="heroStat2LabelEl">Avaliação</span>
+                    </div>
+                    <div class="proof-item">
+                        <strong id="heroStat3ValorEl">20+</strong>
+                        <span id="heroStat3LabelEl">Anos</span>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-image">
+                <div class="product-showcase">
+                    <img src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=400&fit=crop" alt="X-Burguer Premium" class="showcase-img" id="heroImagemEl">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Lê a Hero cacheada no navegador do próprio visitante (localStorage) e mostra na hora,
+         antes do app.js sequer terminar de carregar. Roda uma única vez, logo após a Hero
+         existir no DOM. Se não houver cache (primeira visita), não faz nada: a Hero permanece
+         escondida (hero-loading) até o app.js buscar os dados no Firestore e revelar. -->
+    <script>
+    (function () {
+        try {
+            var cacheRaw = localStorage.getItem('arretadogoHeroCache');
+            if (!cacheRaw) return;
+            var hero = JSON.parse(cacheRaw);
+
+            var setText = function (id, value) {
+                if (!value) return;
+                var el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+
+            setText('heroPrefixoTexto', hero.prefixo);
+            setText('heroDestaqueTexto', hero.destaque);
+            setText('heroSubtituloTexto', hero.subtitulo);
+            setText('heroBotaoTextoEl', hero.botaoTexto);
+
+            var imgEl = document.getElementById('heroImagemEl');
+            if (imgEl && hero.imagem) imgEl.src = hero.imagem;
+
+            var stats = Array.isArray(hero.stats) ? hero.stats : [];
+            stats.slice(0, 3).forEach(function (stat, i) {
+                setText('heroStat' + (i + 1) + 'ValorEl', stat && stat.valor);
+                setText('heroStat' + (i + 1) + 'LabelEl', stat && stat.label);
+            });
+
+            var heroSection = document.getElementById('heroSection');
+            if (heroSection) heroSection.classList.remove('hero-loading');
+        } catch (e) {
+            // Cache inválido ou localStorage indisponível: sem problema, a Hero continua
+            // escondida e o app.js revela ela normalmente assim que o Firestore responder.
+        }
+    })();
+    </script>
+
+    <!-- CATEGORIAS -->
+    <section class="categories">
+        <div class="container">
+            <h3 class="section-title">Categorias</h3>
+            <div class="categories-grid" id="categoriesContainer">
+                <!-- Preenchido por JS -->
+            </div>
+        </div>
+    </section>
+
+    <!-- PROMOÇÕES (banner rotativo, alimentado pelo painel admin) -->
+    <section class="promotions" id="promotionsSection">
+        <div class="container">
+            <div class="promo-carousel" id="promoCarousel">
+                <div class="promo-track" id="promoTrack">
+                    <!-- Slides preenchidos por JS -->
+                </div>
+                <button type="button" class="promo-arrow promo-arrow-prev" id="promoPrev" aria-label="Promoção anterior">‹</button>
+                <button type="button" class="promo-arrow promo-arrow-next" id="promoNext" aria-label="Próxima promoção">›</button>
+                <div class="promo-dots" id="promoDots"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PRODUTOS -->
+    <section class="products" id="produtos">
+        <div class="container">
+            <h3 class="section-title">Nossos Produtos</h3>
+            
+            <div class="filters">
+                <button class="filter-btn active" data-filter="todos">Todos</button>
+                <div id="filterButtons" class="filter-buttons">
+                    <!-- Preenchido por JS -->
+                </div>
+            </div>
+
+            <div class="products-grid" id="productsContainer">
+                <!-- Preenchido por JS -->
+            </div>
+
+            <button class="btn btn-secondary" id="loadMoreBtn" style="display: none; width: 100%; margin-top: 30px;">
+                Carregar Mais
+            </button>
+        </div>
+    </section>
+
+    <!-- SEÇÃO SOBRE -->
+    <section class="about" id="sobre">
+        <div class="container about-content">
+            <div class="about-text">
+                <h3 class="section-title">Por Que Nos Escolher?</h3>
+                <div class="benefits">
+                    <div class="benefit">
+                        <span class="benefit-icon">⚡</span>
+                        <h4>Entrega Rápida</h4>
+                        <p>Até 30 minutos na sua porta</p>
+                    </div>
+                    <div class="benefit">
+                        <span class="benefit-icon">🍜</span>
+                        <h4>Comida Fresca</h4>
+                        <p>Feita na hora, com ingredientes premium</p>
+                    </div>
+                    <div class="benefit">
+                        <span class="benefit-icon">💰</span>
+                        <h4>Melhor Preço</h4>
+                        <p>Qualidade sem gastar muito</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2026 <span class="js-store-name">ArretadoGo</span>. Desenvolvido com ❤️ para você.</p>
+            <p>WhatsApp: <strong id="whatsappNumber">11 99999-9999</strong></p>
+        </div>
+    </footer>
+
+    <!-- MODAL PRODUTO -->
+    <div class="modal" id="productModal">
+        <div class="modal-content">
+            <button class="modal-close" id="closeModal">&times;</button>
+            
+            <div class="modal-body">
+                <img id="modalImage" src="" alt="" class="modal-image">
+                
+                <div class="modal-info">
+                    <h2 id="modalTitle"></h2>
+                    <p id="modalDescription"></p>
+                    
+                    <div class="rating">
+                        <span id="modalRating">★★★★★</span>
+                        <span id="modalReviews">(0 avaliações)</span>
+                    </div>
+
+                    <div class="price-section">
+                        <span class="price" id="modalPrice"></span>
+                        <span id="modalBadge" class="badge" style="display: none;"></span>
+                    </div>
+
+                    <div class="option-group" id="saboresGroup" style="display:none;">
+                        <div class="option-group-title">🍕 Escolha até 2 sabores</div>
+                        <div class="option-group-hint">Combine dois sabores na mesma pizza, ou deixe apenas um marcado.</div>
+                        <div class="option-list" id="saboresOptionsList"></div>
+                    </div>
+
+                    <div class="option-group" id="adicionaisGroup" style="display:none;">
+                        <div class="option-group-title">➕ Adicionais</div>
+                        <div class="option-list" id="adicionaisOptionsList"></div>
+                    </div>
+
+                    <div class="quantity-selector">
+                        <button class="qty-btn" id="decreaseQty">−</button>
+                        <input type="number" id="quantityInput" value="1" min="1" readonly>
+                        <button class="qty-btn" id="increaseQty">+</button>
+                    </div>
+
+                    <textarea id="observacoes" placeholder="Observações (sem cebola, sem molho, etc...)" class="observations"></textarea>
+
+                    <div class="item-total-line" id="itemTotalLine"></div>
+
+                    <button class="btn btn-primary" id="addToCartBtn" style="width: 100%; margin-top: 20px;">
+                        Adicionar ao Carrinho
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CARRINHO LATERAL -->
+    <div class="cart-sidebar" id="cartSidebar">
+        <div class="cart-header">
+            <h3>Seu Carrinho</h3>
+            <button class="close-cart" id="closeCart">&times;</button>
+        </div>
+
+        <div class="cart-items" id="cartItems">
+            <p class="empty-cart">Seu carrinho está vazio</p>
+        </div>
+
+        <div class="cart-summary" id="cartSummary" style="display: none;">
+            <div class="summary-row">
+                <span>Subtotal:</span>
+                <span id="subtotalPrice">R$ 0,00</span>
+            </div>
+            <div class="summary-row">
+                <span>Entrega:</span>
+                <span id="deliveryPrice">R$ 0,00</span>
+            </div>
+            <div class="summary-row total">
+                <span>Total:</span>
+                <span id="totalPrice">R$ 0,00</span>
+            </div>
+        </div>
+
+        <div class="checkout-section" id="checkoutSection" style="display: none;">
+            <input type="text" id="clientName" placeholder="Seu Nome *" class="input-field" required>
+            <input type="tel" id="clientPhone" placeholder="Seu Telefone (11 99999-9999) *" class="input-field" required>
+            
+            <div class="delivery-type">
+                <label>
+                    <input type="radio" name="delivery" value="retirada" checked>
+                    Retirada
+                </label>
+                <label>
+                    <input type="radio" name="delivery" value="delivery">
+                    Delivery
+                </label>
+            </div>
+
+            <select id="clientBairro" class="input-field" style="display: none;">
+                <option value="">Selecione seu bairro</option>
+            </select>
+            <input type="text" id="clientAddress" placeholder="Endereço (rua, número, complemento)" class="input-field" style="display: none;">
+            <textarea id="orderObservations" placeholder="Observações do Pedido" class="input-field"></textarea>
+
+            <button class="btn btn-primary" id="checkoutBtn" style="width: 100%;">
+                Finalizar Pedido no WhatsApp
+            </button>
+        </div>
+    </div>
+
+    <!-- OVERLAY -->
+    <div class="overlay" id="overlay"></div>
+
+    <!-- TOAST NOTIFICAÇÃO -->
+    <div class="toast" id="toast"></div>
+
+    <script src="firebase-config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

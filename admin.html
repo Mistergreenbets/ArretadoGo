@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Admin - ArretadoGo</title>
+    <link rel="icon" type="image/png" href="favicon.png?v=1">
+    <link rel="icon" href="favicon.ico?v=1" sizes="any">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
+    <link rel="stylesheet" href="admin-style.css?v=2">
+    <style>
+        .login-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                linear-gradient(180deg, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.85) 60%, #0a0a0a 100%),
+                url('https://rabiscoearte.github.io/MoldesClub/fastfood.png') center center / cover no-repeat;
+            z-index: 9999;
+            animation: fadeInBg 0.6s ease;
+        }
+
+        @keyframes fadeInBg {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .login-box {
+            background: rgba(15, 15, 15, 0.82);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            padding: 44px 40px;
+            border-radius: 10px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.08);
+            animation: fadeInCard 0.5s ease 0.15s both;
+        }
+
+        @keyframes fadeInCard {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .login-box h2 { margin: 0 0 8px; text-align: center; color: #fff; }
+        .login-box p { margin: 0 0 24px; text-align: center; color: #b3b3b3; font-size: 14px; }
+
+        .login-logo {
+            display: block;
+            max-width: 200px;
+            width: 100%;
+            height: auto;
+            margin: 0 auto 20px;
+            filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
+        }
+
+        .login-box .form-group label {
+            color: #d9d9d9;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .login-box .input-field {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #fff;
+        }
+
+        .login-box .input-field::placeholder {
+            color: #8a8a8a;
+        }
+
+        .login-box .input-field:focus {
+            outline: none;
+            border-color: var(--primary-color, #C20000);
+            background: rgba(255,255,255,0.1);
+            box-shadow: 0 0 0 3px rgba(194, 0, 0, 0.2);
+        }
+
+        .login-box #loginSubmitBtn {
+            margin-top: 8px;
+            letter-spacing: 0.3px;
+        }
+        .login-error {
+            background: #fdecea;
+            color: #b91c1c;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        .order-status-row {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn-send-whatsapp {
+            font-size: 13px;
+            padding: 6px 12px;
+            white-space: nowrap;
+        }
+        .order-status-select {
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+        .dynamic-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .dynamic-list:empty::before {
+            content: "Nenhum item cadastrado ainda.";
+            color: #999;
+            font-size: 13px;
+        }
+        .dynamic-list-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 12px;
+            background: #f7f7f7;
+            border-radius: 6px;
+            border: 1px solid #eee;
+        }
+        .dynamic-list-item span {
+            font-size: 14px;
+        }
+        .dynamic-list-item .remove-item-btn {
+            background: none;
+            border: none;
+            color: #b91c1c;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 6px;
+        }
+        .dynamic-add-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .dynamic-add-row .input-field {
+            flex: 1;
+            min-width: 140px;
+        }
+        .motoboy-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 14px;
+            background: #f7f7f7;
+            border-radius: 8px;
+            border: 1px solid #eee;
+            margin-bottom: 8px;
+        }
+        .motoboy-item .motoboy-info strong {
+            display: block;
+        }
+        .motoboy-item .motoboy-info small {
+            color: #888;
+        }
+        .motoboy-status-badge {
+            font-size: 12px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+        .motoboy-status-badge.ativo {
+            background: #dcfce7;
+            color: #15803d;
+        }
+        .motoboy-status-badge.inativo {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+        .promo-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            background: #f7f7f7;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+        .promo-item img {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 6px;
+            flex-shrink: 0;
+            background: #eee;
+        }
+        .promo-item .promo-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .promo-item .promo-info strong {
+            display: block;
+            font-size: 14px;
+        }
+        .promo-item .promo-info small {
+            color: #888;
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .promo-item .promo-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .promo-toggle-btn {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+        }
+        .promo-toggle-btn.ativo {
+            background: #dcfce7;
+            color: #15803d;
+        }
+        .promo-toggle-btn.inativo {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+        @media (max-width: 768px) {
+            .login-box {
+                padding: 28px 24px;
+                max-width: 90%;
+            }
+            /* Regras forçadas aqui para não depender de cache do admin-style.css */
+            .admin-container {
+                grid-template-columns: 1fr !important;
+            }
+            .sidebar {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                z-index: 150 !important;
+                height: 100vh !important;
+                width: 250px !important;
+                transform: translateX(-100%) !important;
+                transition: transform 0.3s ease !important;
+            }
+            .sidebar.active {
+                transform: translateX(0) !important;
+            }
+            .toggle-sidebar {
+                display: block !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- TELA DE LOGIN -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-box">
+            <img src="logo.png?v=1" alt="ArretadoGo" class="login-logo">
+            <p>Faça login para acessar o painel</p>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginEmail">E-mail</label>
+                    <input type="email" id="loginEmail" class="input-field" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Senha</label>
+                    <input type="password" id="loginPassword" class="input-field" required autocomplete="current-password">
+                </div>
+                <div id="loginError" class="login-error" style="display:none;"></div>
+                <button type="submit" class="btn btn-primary" style="width:100%;" id="loginSubmitBtn">Entrar</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="admin-container" id="adminContainer" style="display:none;">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <img src="logo.png?v=1" alt="ArretadoGo" class="sidebar-logo">
+                <button class="toggle-sidebar" id="toggleSidebar">☰</button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-section="dashboard">
+                    📊 Dashboard
+                </a>
+                <a href="#" class="nav-item" data-section="produtos">
+                    📦 Produtos
+                </a>
+                <a href="#" class="nav-item" data-section="pedidos">
+                    📋 Pedidos
+                </a>
+                <a href="#" class="nav-item" data-section="motoboys">
+                    🛵 Motoboys
+                </a>
+                <a href="#" class="nav-item" data-section="configuracoes">
+                    ⚙️ Configurações
+                </a>
+                <a href="index.html" class="nav-item logout">
+                    🚪 Voltar à Loja
+                </a>
+            </nav>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="admin-main">
+            <!-- HEADER -->
+            <header class="admin-header">
+                <h1>Painel de Administração</h1>
+                <div class="header-actions">
+                    <span class="user-info" id="userInfo">Conectado</span>
+                    <button class="btn-logout" id="logoutBtn">Sair</button>
+                </div>
+            </header>
+
+            <!-- SEÇÃO DASHBOARD -->
+            <section class="section" id="dashboardSection">
+                <div class="section-header">
+                    <h2>Dashboard</h2>
+                    <span id="dashboardStoreStatus" class="store-status-badge" style="display:none;"></span>
+                </div>
+
+                <div class="dashboard-cards" id="dashboardCards">
+                    <div class="dashboard-card" title="Pedidos recebidos hoje (qualquer status, exceto cancelado)">
+                        <span class="dashboard-card-label">Pedidos Hoje</span>
+                        <span class="dashboard-card-value" id="dashPedidosHoje">—</span>
+                    </div>
+                    <div class="dashboard-card" title="Soma dos pedidos marcados como Entregue hoje">
+                        <span class="dashboard-card-label">Faturamento Hoje</span>
+                        <span class="dashboard-card-value" id="dashFaturamentoHoje">—</span>
+                    </div>
+                    <div class="dashboard-card" title="Soma dos pedidos marcados como Entregue neste mês">
+                        <span class="dashboard-card-label">Faturamento no Mês</span>
+                        <span class="dashboard-card-value" id="dashFaturamentoMes">—</span>
+                    </div>
+                    <div class="dashboard-card" title="Pedidos que ainda não foram entregues nem cancelados">
+                        <span class="dashboard-card-label">Pedidos em Aberto</span>
+                        <span class="dashboard-card-value" id="dashPedidosAbertos">—</span>
+                    </div>
+                    <div class="dashboard-card" title="Faturamento do mês dividido pelo número de pedidos entregues no mês">
+                        <span class="dashboard-card-label">Ticket Médio (mês)</span>
+                        <span class="dashboard-card-value" id="dashTicketMedio">—</span>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="dashboard-panel">
+                        <h3>🔥 Mais Vendidos</h3>
+                        <div id="dashboardTopProdutos" class="dashboard-top-list">
+                            <p style="color:#999; font-size:13px;">Carregando...</p>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-panel">
+                        <h3>⚠️ Alerta de Estoque Baixo</h3>
+                        <div id="dashboardEstoqueBaixo" class="dashboard-estoque-list">
+                            <p style="color:#999; font-size:13px;">Carregando...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SEÇÃO PRODUTOS -->
+            <section class="section" id="produtosSection" style="display: none;">
+                <div class="section-header">
+                    <h2>Gerenciar Produtos</h2>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn btn-secondary" id="importarPlanilhaBtn">📊 Importar Planilha</button>
+                        <button class="btn btn-primary" id="newProductBtn">+ Novo Produto</button>
+                    </div>
+                </div>
+
+                <div class="search-bar">
+                    <input type="text" id="searchProducts" placeholder="Buscar produto...">
+                </div>
+
+                <div class="products-table">
+                    <table id="productsTable">
+                        <thead>
+                            <tr>
+                                <th>Imagem</th>
+                                <th>Nome</th>
+                                <th>Categoria</th>
+                                <th>Preço</th>
+                                <th>Estoque</th>
+                                <th>Vendidos</th>
+                                <th>Ativo</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productsTableBody">
+                            <tr class="loading">
+                                <td colspan="8" style="text-align: center; padding: 20px;">
+                                    Carregando produtos... ⏳
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SEÇÃO PEDIDOS -->
+            <section class="section" id="pedidosSection" style="display: none;">
+                <div class="section-header">
+                    <h2>Histórico de Pedidos</h2>
+                    <select id="orderFilter" class="filter-select">
+                        <option value="todos">Todos os Pedidos</option>
+                        <option value="hoje">Hoje</option>
+                        <option value="semana">Esta Semana</option>
+                        <option value="mes">Este Mês</option>
+                    </select>
+                </div>
+
+                <div class="orders-list" id="ordersList">
+                    <p style="text-align: center; padding: 20px;">Nenhum pedido ainda 📭</p>
+                </div>
+            </section>
+
+            <!-- SEÇÃO MOTOBOYS -->
+            <section class="section" id="motoboysSection" style="display: none;">
+                <div class="section-header">
+                    <h2>Motoboys</h2>
+                </div>
+
+                <p style="color:#888; font-size: 13px; margin-bottom: 16px;">
+                    Cadastre aqui os motoboys que vão acessar <a href="motoboy.html" target="_blank">motoboy.html</a> para
+                    marcar pedidos como "Saiu para Entrega" e "Entregue". Desativar bloqueia o acesso ao painel,
+                    mas não apaga o login — se quiser reaproveitar o e-mail, é preciso remover a conta direto no
+                    Firebase Console (Authentication).
+                </p>
+
+                <form id="novoMotoboyForm" class="settings-form" style="margin-bottom: 24px;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="motoboyNome">Nome</label>
+                            <input type="text" id="motoboyNome" class="input-field" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="motoboyEmail">E-mail de login</label>
+                            <input type="email" id="motoboyEmail" class="input-field" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="motoboySenha">Senha (mínimo 6 caracteres)</label>
+                        <input type="password" id="motoboySenha" class="input-field" minlength="6" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="addMotoboyBtn">+ Cadastrar Motoboy</button>
+                </form>
+
+                <div id="motoboysList" class="dynamic-list"></div>
+            </section>
+
+            <!-- SEÇÃO CONFIGURAÇÕES -->
+            <section class="section" id="configuracoesSection" style="display: none;">
+                <div class="section-header">
+                    <h2>Configurações da Loja</h2>
+                </div>
+
+                <form id="settingsForm" class="settings-form">
+                    <div class="form-group">
+                        <label for="storeName">Nome da Loja:</label>
+                        <input type="text" id="storeName" class="input-field" placeholder="ArretadoGo">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="storePhone">WhatsApp para Pedidos:</label>
+                        <input type="tel" id="storePhone" class="input-field" placeholder="55 11 99999-9999">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="deliveryFee">Taxa de Entrega (R$):</label>
+                        <input type="number" id="deliveryFee" class="input-field" placeholder="5.00" step="0.01">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="deliveryTime">Tempo de Entrega (minutos):</label>
+                        <input type="number" id="deliveryTime" class="input-field" placeholder="30">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="minimumOrder">Pedido Mínimo (R$):</label>
+                        <input type="number" id="minimumOrder" class="input-field" placeholder="20.00" step="0.01">
+                    </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
+
+                    <div class="form-group">
+                        <label>🕒 Horário de Funcionamento</label>
+                        <small style="display:block; margin-bottom:8px; color:#888;">
+                            Quando ativado, a loja mostra automaticamente "Fechado" pro cliente fora do horário
+                            configurado e bloqueia a finalização de pedidos. Desative pra manter a loja sempre "aberta".
+                        </small>
+                    </div>
+
+                    <div class="form-group checkbox">
+                        <input type="checkbox" id="horarioAtivo">
+                        <label for="horarioAtivo">Controlar horário de funcionamento automaticamente</label>
+                    </div>
+
+                    <div id="horarioDiasList" class="horario-dias-list"></div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
+
+                    <div class="form-group">
+                        <label>🏠 Seção Inicial (Hero)</label>
+                        <small style="display:block; margin-bottom:8px; color:#888;">É o primeiro bloco que o cliente vê ao abrir a loja, com título, texto, botão e a imagem de destaque.</small>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="heroPrefixo">Título — parte normal</label>
+                            <input type="text" id="heroPrefixo" class="input-field" placeholder="Aproveite Sua">
+                        </div>
+                        <div class="form-group">
+                            <label for="heroDestaque">Título — parte destacada (cor)</label>
+                            <input type="text" id="heroDestaque" class="input-field" placeholder="Comida Deliciosa">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="heroSubtitulo">Subtítulo</label>
+                        <textarea id="heroSubtitulo" class="input-field" rows="2" placeholder="Entregamos sua comida em até 30 minutos no seu bairro. Qualidade e agilidade garantidas!"></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="heroBotaoTexto">Texto do botão</label>
+                            <input type="text" id="heroBotaoTexto" class="input-field" placeholder="Pedir Agora">
+                        </div>
+                        <div class="form-group">
+                            <label for="heroImagem">URL da imagem de destaque</label>
+                            <input type="text" id="heroImagem" class="input-field" placeholder="https://...">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Selos de confiança (os 3 números abaixo do botão)</label>
+                        <div class="form-row" style="grid-template-columns: repeat(3, 1fr);">
+                            <div class="form-group">
+                                <input type="text" id="heroStat1Valor" class="input-field" placeholder="Valor (ex: 12k+)">
+                                <input type="text" id="heroStat1Label" class="input-field" placeholder="Rótulo (ex: Pedidos)" style="margin-top:8px;">
+                            </div>
+                            <div class="form-group">
+                                <input type="text" id="heroStat2Valor" class="input-field" placeholder="Valor (ex: 4.8★)">
+                                <input type="text" id="heroStat2Label" class="input-field" placeholder="Rótulo (ex: Avaliação)" style="margin-top:8px;">
+                            </div>
+                            <div class="form-group">
+                                <input type="text" id="heroStat3Valor" class="input-field" placeholder="Valor (ex: 20+)">
+                                <input type="text" id="heroStat3Label" class="input-field" placeholder="Rótulo (ex: Anos)" style="margin-top:8px;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
+
+                    <div class="form-group">
+                        <label>🍕 Sabores de Pizza (cliente escolhe até 2 por pizza)</label>
+                        <div id="saboresPizzaList" class="dynamic-list"></div>
+                        <div class="dynamic-add-row">
+                            <input type="text" id="novoSaborInput" class="input-field" placeholder="Nome do sabor (ex: Calabresa)">
+                            <button type="button" class="btn btn-secondary" id="addSaborBtn">+ Adicionar Sabor</button>
+                        </div>
+                    </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
+
+                    <div class="form-group">
+                        <label>🍔 Adicionais para Sanduíches (com preço extra)</label>
+                        <div id="adicionaisList" class="dynamic-list"></div>
+                        <div class="dynamic-add-row">
+                            <input type="text" id="novoAdicionalNome" class="input-field" placeholder="Nome (ex: Bacon)">
+                            <input type="number" id="novoAdicionalPreco" class="input-field" placeholder="Preço (R$)" step="0.01" style="max-width: 140px;">
+                            <button type="button" class="btn btn-secondary" id="addAdicionalBtn">+ Adicionar</button>
+                        </div>
+                    </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
+
+                    <div class="form-group">
+                        <label>🚗 Taxa de Entrega por Bairro</label>
+                        <small style="display:block; margin-bottom:8px; color:#888;">A taxa padrão acima é usada para bairros que não estiverem nesta lista.</small>
+                        <div id="bairrosList" class="dynamic-list"></div>
+                        <div class="dynamic-add-row">
+                            <input type="text" id="novoBairroNome" class="input-field" placeholder="Nome do bairro">
+                            <input type="number" id="novoBairroTaxa" class="input-field" placeholder="Taxa (R$)" step="0.01" style="max-width: 140px;">
+                            <button type="button" class="btn btn-secondary" id="addBairroBtn">+ Adicionar</button>
+                        </div>
+                    </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
+
+                    <div class="form-group">
+                        <label>🎉 Banner Rotativo de Promoções (aparece na loja)</label>
+                        <small style="display:block; margin-bottom:8px; color:#888;">Cada promoção ativa vira um slide do banner rotativo na página inicial. Desmarque "Ativa" para tirar uma promoção do ar sem apagá-la.</small>
+                        <div id="promocoesList" class="dynamic-list"></div>
+                        <div class="dynamic-add-row" style="flex-wrap: wrap;">
+                            <input type="text" id="novaPromocaoTitulo" class="input-field" placeholder="Título (ex: Compre 2 e ganhe 1)" style="flex: 1 1 220px;">
+                            <input type="text" id="novaPromocaoImagem" class="input-field" placeholder="URL da imagem" style="flex: 1 1 220px;">
+                        </div>
+                        <div class="dynamic-add-row" style="margin-top: 8px;">
+                            <input type="text" id="novaPromocaoDescricao" class="input-field" placeholder="Descrição curta (ex: válido em produtos selecionados)" style="flex: 1;">
+                        </div>
+                        <div class="dynamic-add-row" style="margin-top: 8px;">
+                            <button type="button" class="btn btn-secondary" id="addPromocaoBtn">+ Adicionar Promoção</button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="margin-top: 20px;">Salvar Configurações</button>
+                </form>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL PRODUTO -->
+    <div class="modal" id="productFormModal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2 id="modalTitle">Novo Produto</h2>
+                <button class="modal-close" id="closeProductModal">&times;</button>
+            </div>
+
+            <div class="product-modal-body">
+                <!-- PRÉVIA DE COMO O PRODUTO APARECE NA LOJA -->
+                <div class="product-preview-col">
+                    <span class="product-preview-label">Prévia na loja</span>
+                    <div class="product-preview-card">
+                        <div class="product-preview-image-wrap">
+                            <img id="previewImage" class="product-preview-image" src="" alt="" style="display:none;">
+                            <div class="product-preview-image-placeholder" id="previewImagePlaceholder">🖼️<br>Sem imagem</div>
+                            <span class="product-preview-badge" id="previewBadge" style="display:none;"></span>
+                        </div>
+                        <div class="product-preview-info">
+                            <span class="product-preview-category" id="previewCategory">Categoria</span>
+                            <strong class="product-preview-name" id="previewName">Nome do produto</strong>
+                            <span class="product-preview-price" id="previewPrice">R$ 0,00</span>
+                            <span class="product-preview-stock" id="previewStock"></span>
+                        </div>
+                    </div>
+                    <span class="product-preview-status" id="previewStatusAtivo"></span>
+                </div>
+
+                <!-- FORMULÁRIO -->
+                <form id="productForm" class="product-form">
+                    <div class="product-form-section">
+                        <h3 class="product-form-section-title">📋 Informações Básicas</h3>
+
+                        <div class="form-group">
+                            <label for="productName">Nome do Produto *</label>
+                            <input type="text" id="productName" class="input-field" required>
+                            <span class="field-error" id="errProductName"></span>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="productCategory">Categoria *</label>
+                                <select id="productCategory" class="input-field" required>
+                                    <option value="">Selecione uma categoria</option>
+                                    <option value="burgers">Burgadores</option>
+                                    <option value="pizza">Pizzas</option>
+                                    <option value="bebidas">Bebidas</option>
+                                    <option value="acompanhamentos">Acompanhamentos</option>
+                                    <option value="sobremesas">Sobremesas</option>
+                                </select>
+                                <span class="field-error" id="errProductCategory"></span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="productBadge">Badge/Etiqueta</label>
+                                <select id="productBadge" class="input-field">
+                                    <option value="">Nenhuma</option>
+                                    <option value="novo">Novo</option>
+                                    <option value="promo">Promoção</option>
+                                    <option value="bestseller">Mais Vendido</option>
+                                    <option value="limitado">Edição Limitada</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="productDescription">Descrição</label>
+                            <textarea id="productDescription" class="input-field" rows="3" placeholder="Descreva o produto..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="product-form-section">
+                        <h3 class="product-form-section-title">💰 Preço e Estoque</h3>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="productPrice">Preço (R$) *</label>
+                                <input type="number" id="productPrice" class="input-field" placeholder="0.00" step="0.01" min="0" required>
+                                <span class="field-error" id="errProductPrice"></span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="productStock">Estoque *</label>
+                                <input type="number" id="productStock" class="input-field" placeholder="10" min="0" required>
+                                <span class="field-error" id="errProductStock"></span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="productEstoqueMinimo">Alertar quando estoque atingir</label>
+                            <input type="number" id="productEstoqueMinimo" class="input-field" placeholder="5" min="0">
+                            <small>Abaixo (ou igual a) esse número, o produto aparece no alerta de estoque baixo do Dashboard.</small>
+                        </div>
+
+                        <div class="form-group checkbox">
+                            <input type="checkbox" id="productControlaEstoque" checked>
+                            <label for="productControlaEstoque">Descontar do estoque automaticamente a cada pedido</label>
+                        </div>
+                        <small style="display:block; margin-top:-8px; color:#888;">
+                            Desmarque para produtos feitos na hora (pizzas com sabores, sanduíches com adicionais, pastéis, etc.).
+                            Nesses casos o número de "Estoque" é ignorado e o sistema só contabiliza quantos foram vendidos.
+                        </small>
+                    </div>
+
+                    <div class="product-form-section">
+                        <h3 class="product-form-section-title">🖼️ Imagem</h3>
+
+                        <div class="form-group">
+                            <label for="productImage">URL da Imagem *</label>
+                            <input type="url" id="productImage" class="input-field" placeholder="https://...">
+                            <small>Use URLs de imagens (ex: unsplash.com, pixabay.com). A prévia ao lado atualiza sozinha.</small>
+                            <span class="field-error" id="errProductImage"></span>
+                        </div>
+                    </div>
+
+                    <div class="product-form-section">
+                        <h3 class="product-form-section-title">👁️ Visibilidade</h3>
+
+                        <div class="form-group checkbox">
+                            <input type="checkbox" id="productActive" checked>
+                            <label for="productActive">Produto Ativo (visível na loja)</label>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="saveProductBtn">Salvar Produto</button>
+                        <button type="button" class="btn btn-secondary" id="cancelProductBtn">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL IMPORTAR PRODUTOS EM LOTE (planilha) -->
+    <div class="modal" id="importCardapioModal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Importar Produtos em Lote</h2>
+                <button class="modal-close" id="closeImportModal">&times;</button>
+            </div>
+            <div class="modal-body">
+
+                <div id="blocoImportarPlanilha" style="border:1px solid var(--border-color); border-radius:10px; padding:16px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:8px;">📊 Planilha Excel</h3>
+                    <p style="font-size:13px; color:var(--text-light); margin-bottom:10px;">
+                        Baixe o modelo, preencha olhando a foto do cardápio (uma linha por produto) e envie de volta aqui.
+                    </p>
+                    <a href="template-produtos.xlsx" download class="btn btn-secondary btn-sm" style="display:inline-block; margin-bottom:10px;">⬇️ Baixar modelo da planilha</a>
+                    <div class="form-group">
+                        <input type="file" id="planilhaImportInput" class="input-field" accept=".xlsx,.xls,.csv">
+                    </div>
+                    <button class="btn btn-primary" id="processarPlanilhaBtn">Ler Planilha</button>
+                </div>
+
+                <!-- PRÉVIA -->
+                <div id="cardapioPreviewWrapper" style="display:none; margin-top:24px;">
+                    <p style="margin-bottom:12px; color: var(--text-light); font-size:13px;">
+                        Revise nome, categoria, preço, descrição e imagem antes de importar. Se a planilha já trouxer
+                        a URL da imagem, ela aparece preenchida abaixo — se vier vazia, entra um placeholder que você
+                        pode trocar aqui mesmo antes de importar.
+                    </p>
+                    <div id="cardapioPreviewList"></div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn-primary" id="importarTodosBtn" style="display:none;">Importar Todos</button>
+                    <button class="btn btn-secondary" id="cancelImportBtn">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CONFIRMAÇÃO DELETE -->
+    <div class="modal" id="confirmDeleteModal">
+        <div class="modal-content modal-sm">
+            <h2>Confirmar Exclusão</h2>
+            <p id="deleteMessage">Tem certeza que deseja deletar este produto?</p>
+            <div class="form-actions">
+                <button class="btn btn-danger" id="confirmDeleteBtn">Deletar</button>
+                <button class="btn btn-secondary" id="cancelDeleteBtn">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OVERLAY -->
+    <div class="overlay" id="overlay"></div>
+
+    <!-- TOAST -->
+    <div class="toast" id="toast"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="pedido-status-utils.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>

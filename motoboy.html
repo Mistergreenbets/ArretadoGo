@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Área do Motoboy - ArretadoGo</title>
+    <link rel="icon" type="image/png" href="favicon.png?v=1">
+    <link rel="icon" href="favicon.ico?v=1" sizes="any">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
+    <link rel="stylesheet" href="admin-style.css?v=2">
+    <style>
+        .login-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                linear-gradient(180deg, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.85) 60%, #0a0a0a 100%),
+                url('https://rabiscoearte.github.io/MoldesClub/fastfood.png') center center / cover no-repeat;
+            z-index: 9999;
+        }
+        .login-box {
+            background: rgba(15, 15, 15, 0.82);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            padding: 44px 40px;
+            border-radius: 10px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .login-box h2 { margin: 0 0 8px; text-align: center; color: #fff; }
+        .login-box p { margin: 0 0 24px; text-align: center; color: #b3b3b3; font-size: 14px; }
+        .login-logo {
+            display: block;
+            max-width: 180px;
+            width: 100%;
+            height: auto;
+            margin: 0 auto 20px;
+        }
+        .login-box .form-group label { color: #d9d9d9; font-size: 13px; font-weight: 600; }
+        .login-box .input-field {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #fff;
+        }
+        .login-box .input-field::placeholder { color: #8a8a8a; }
+        .login-box .input-field:focus {
+            outline: none;
+            border-color: var(--primary-color, #C20000);
+            background: rgba(255,255,255,0.1);
+            box-shadow: 0 0 0 3px rgba(194, 0, 0, 0.2);
+        }
+        .login-error {
+            background: #fdecea;
+            color: #b91c1c;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .motoboy-page {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .motoboy-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .motoboy-header h1 { margin: 0; font-size: 22px; }
+        .motoboy-header .user-info { color: #666; font-size: 13px; }
+
+        .entrega-card {
+            background: #fff;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            padding: 16px 18px;
+            margin-bottom: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .entrega-card .entrega-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .entrega-card .entrega-id { font-weight: 700; }
+        .entrega-card .entrega-status {
+            font-size: 12px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-weight: 600;
+            background: #f1f1f1;
+        }
+        .entrega-card .entrega-detalhes { font-size: 14px; line-height: 1.6; color: #333; }
+        .entrega-card .entrega-detalhes strong { color: #111; }
+        .entrega-actions {
+            margin-top: 12px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .entrega-actions .btn { flex: 1; min-width: 160px; }
+        .empty-state {
+            text-align: center;
+            padding: 40px 16px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <!-- TELA DE LOGIN -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-box">
+            <img src="logo.png?v=1" alt="ArretadoGo" class="login-logo">
+            <p>Login de Motoboy</p>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginEmail">E-mail</label>
+                    <input type="email" id="loginEmail" class="input-field" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Senha</label>
+                    <input type="password" id="loginPassword" class="input-field" required autocomplete="current-password">
+                </div>
+                <div id="loginError" class="login-error" style="display:none;"></div>
+                <button type="submit" class="btn btn-primary" style="width:100%;" id="loginSubmitBtn">Entrar</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- PAINEL DO MOTOBOY -->
+    <div class="motoboy-page" id="motoboyPage" style="display:none;">
+        <div class="motoboy-header">
+            <h1>🛵 Entregas em Rota</h1>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <span class="user-info" id="userInfo"></span>
+                <button class="btn-logout" id="logoutBtn">Sair</button>
+            </div>
+        </div>
+
+        <div id="entregasList">
+            <div class="empty-state">Carregando entregas... ⏳</div>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="toast" id="toast"></div>
+
+    <script src="firebase-config.js"></script>
+    <script src="pedido-status-utils.js"></script>
+    <script src="motoboy.js"></script>
+</body>
+</html>
