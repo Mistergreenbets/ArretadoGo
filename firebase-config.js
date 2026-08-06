@@ -726,11 +726,19 @@ const VAPID_KEY = 'BJycZ4YN6PUPcuk_wm3Iw2GqumldmSn8BqZKJNXduOF1sC8b2dY62aXqoZ7WZ
 
 async function solicitarPermissaoNotificacao() {
     if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-        return null; // navegador não suporta
+        return { token: null, motivo: 'Este navegador não suporta notificações push.' };
+    }
+
+    // Se o usuário já negou/bloqueou antes, o Chrome nem mostra o popup de novo —
+    // é importante diferenciar esse caso do "usuário acabou de negar agora".
+    if (Notification.permission === 'denied') {
+        return { token: null, motivo: 'As notificações estão bloqueadas para este site nas configurações do navegador.' };
     }
 
     const permissao = await Notification.requestPermission();
-    if (permissao !== 'granted') return null;
+    if (permissao !== 'granted') {
+        return { token: null, motivo: 'Permissão de notificação não concedida.' };
+    }
 
     try {
         await getFirebase(); // garante que firebase.initializeApp() já rodou
@@ -739,10 +747,10 @@ async function solicitarPermissaoNotificacao() {
         const registration = await navigator.serviceWorker.register('firebase-messaging-sw.js');
         const messaging = firebase.messaging();
         const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
-        return token || null;
+        return { token: token || null, motivo: token ? null : 'Firebase não retornou um token.' };
     } catch (error) {
         console.error('Erro ao obter token de notificação:', error);
-        return null;
+        return { token: null, motivo: error.message || String(error) };
     }
 }
 

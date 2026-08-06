@@ -132,9 +132,9 @@ async function ativarNotificacoes() {
     btn.textContent = 'Ativando...';
 
     try {
-        const token = await solicitarPermissaoNotificacao();
+        const { token, motivo } = await solicitarPermissaoNotificacao();
         if (!token) {
-            showToast('Não foi possível ativar — verifique a permissão de notificações do navegador', 'error');
+            showToast(motivo || 'Não foi possível ativar — verifique a permissão de notificações do navegador', 'error');
             btn.disabled = false;
             btn.textContent = '🔔 Ativar notificações desse pedido';
             return;
