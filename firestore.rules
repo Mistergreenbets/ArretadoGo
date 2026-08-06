@@ -64,9 +64,12 @@ service cloud.firestore {
       allow get: if true;
       allow list: if isAdmin() || isMotoboy();
 
+      // CORRIGIDO: motoboy.js grava também "entregueEm" (timestamp) quando marca o
+      // pedido como entregue — esse campo precisa estar liberado aqui, senão a escrita
+      // é rejeitada e o app mostra "Erro ao atualizar status".
       allow update: if isAdmin() || (
         isMotoboy() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'localizacaoAtual']) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'localizacaoAtual', 'entregueEm']) &&
         request.resource.data.status in ['saiu_entrega', 'entregue']
       ) || (
         // Cliente (sem login) pode registrar o token de notificação push do PRÓPRIO
