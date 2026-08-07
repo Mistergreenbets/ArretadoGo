@@ -937,6 +937,8 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
 
     // Salvar pedido no Firebase PRIMEIRO — precisamos do ID gerado pelo Firestore pra
     // montar o link de rastreamento antes de montar a mensagem do WhatsApp.
+    const taxaEntregaPedido = tipoEntrega === 'delivery' ? obterTaxaEntregaSelecionada() : 0;
+
     const pedidoSalvo = await salvarPedidoFirebase({
         codigoPedido,
         nome,
@@ -946,7 +948,8 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
         bairro,
         observacoes,
         itens: carrinho,
-        total: calcularTotal(tipoEntrega)
+        total: calcularTotal(tipoEntrega),
+        taxaEntrega: taxaEntregaPedido
     });
 
     const linkRastreio = pedidoSalvo

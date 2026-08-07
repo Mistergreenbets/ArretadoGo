@@ -632,6 +632,18 @@ async function getMotoboyByUid(uid) {
     }
 }
 
+// Motoboy liga/desliga o próprio status "disponível pra entregas" (toggle no dashboard).
+// É só uma informação visual por enquanto — não bloqueia nada no fluxo de pedidos.
+async function atualizarStatusOnlineMotoboy(uid, online) {
+    try {
+        const { db } = await getFirebase();
+        await db.collection('motoboys').doc(uid).update({ online });
+    } catch (error) {
+        console.error('Erro ao atualizar status online:', error);
+        throw error;
+    }
+}
+
 // ========== ADMINS ==========
 // Verifica se o uid autenticado está na allowlist de admins (coleção /admins).
 // Essa coleção só deve ser populada manualmente pelo Console do Firebase,
