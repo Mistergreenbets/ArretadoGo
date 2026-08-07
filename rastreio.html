@@ -9,42 +9,114 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { background: var(--light-bg, #F5F5F5); }
-
-        .rastreio-container {
-            max-width: 560px;
-            margin: 0 auto;
-            padding: 24px 16px 60px;
+        body {
+            background: linear-gradient(180deg, var(--light-bg, #F5F5F5) 0%, #ECECEC 100%);
+            font-family: 'Inter', -apple-system, sans-serif;
+            min-height: 100vh;
         }
 
-        .rastreio-header {
+        /* ---- Topo com marca ---- */
+        .rastreio-topbar {
+            background: linear-gradient(135deg, var(--primary-color, #C20000) 0%, #8f0000 100%);
+            padding: 22px 16px 46px;
+            color: #fff;
+            box-shadow: 0 4px 16px rgba(194, 0, 0, 0.25);
+        }
+
+        .rastreio-topbar-inner {
+            max-width: 560px;
+            margin: 0 auto;
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 24px;
         }
 
-        .rastreio-header img { height: 40px; }
+        .rastreio-topbar img {
+            height: 42px;
+            border-radius: 8px;
+            background: #fff;
+            padding: 2px;
+        }
+
+        .rastreio-topbar-titulo {
+            font-family: 'Poppins', sans-serif;
+            font-weight: 700;
+            font-size: 17px;
+            line-height: 1.2;
+        }
+
+        .rastreio-topbar-sub {
+            font-size: 12px;
+            opacity: 0.85;
+            font-weight: 500;
+        }
+
+        .rastreio-container {
+            max-width: 560px;
+            margin: -30px auto 0;
+            padding: 0 16px 90px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .rastreio-header { display: none; } /* substituído pela topbar acima */
 
         .rastreio-card {
             background: #fff;
-            border-radius: 14px;
-            padding: 24px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+            border-radius: 20px;
+            padding: 26px 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
             margin-bottom: 20px;
+            animation: apareceCard 0.35s ease;
+        }
+
+        @keyframes apareceCard {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .rastreio-codigo-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 4px;
         }
 
         .rastreio-codigo {
             font-size: 13px;
-            color: #888;
-            margin-bottom: 4px;
+            color: #999;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+        }
+
+        .rastreio-copiar-btn {
+            background: var(--light-bg, #F5F5F5);
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .rastreio-copiar-btn:active {
+            transform: scale(0.94);
+            background: #eee;
         }
 
         .rastreio-titulo {
-            font-size: 20px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 22px;
             font-weight: 700;
-            margin-bottom: 20px;
+            margin-bottom: 22px;
+            color: #1a1a1a;
         }
 
         /* ---- Timeline de status ---- */
@@ -58,12 +130,24 @@
         .timeline::before {
             content: '';
             position: absolute;
-            top: 15px;
-            left: 15px;
-            right: 15px;
-            height: 3px;
+            top: 18px;
+            left: 18px;
+            right: 18px;
+            height: 4px;
             background: #eee;
+            border-radius: 4px;
             z-index: 0;
+        }
+
+        .timeline-progresso {
+            position: absolute;
+            top: 18px;
+            left: 18px;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary-color, #C20000), #ff4d4d);
+            border-radius: 4px;
+            z-index: 0;
+            transition: width 0.4s ease;
         }
 
         .timeline-step {
@@ -76,47 +160,56 @@
         }
 
         .timeline-dot {
-            width: 32px;
-            height: 32px;
+            width: 38px;
+            height: 38px;
             border-radius: 50%;
-            background: #eee;
+            background: #fff;
+            border: 3px solid #eee;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 15px;
+            font-size: 16px;
             margin-bottom: 8px;
             transition: all 0.3s ease;
         }
 
         .timeline-step.concluido .timeline-dot {
             background: var(--primary-color, #C20000);
+            border-color: var(--primary-color, #C20000);
             color: #fff;
         }
 
         .timeline-step.atual .timeline-dot {
             background: var(--primary-color, #C20000);
+            border-color: var(--primary-color, #C20000);
             color: #fff;
-            box-shadow: 0 0 0 5px rgba(194, 0, 0, 0.15);
+            animation: pulseDot 1.6s ease infinite;
+        }
+
+        @keyframes pulseDot {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(194, 0, 0, 0.35); }
+            50% { box-shadow: 0 0 0 8px rgba(194, 0, 0, 0.12); }
         }
 
         .timeline-label {
             font-size: 11px;
             text-align: center;
-            color: #999;
+            color: #aaa;
             max-width: 70px;
+            font-weight: 500;
         }
 
         .timeline-step.concluido .timeline-label,
         .timeline-step.atual .timeline-label {
             color: #222;
-            font-weight: 600;
+            font-weight: 700;
         }
 
         .status-cancelado-box {
             background: #FDECEA;
             color: #B91C1C;
-            padding: 14px 16px;
-            border-radius: 10px;
+            padding: 16px 18px;
+            border-radius: 12px;
             font-weight: 600;
             text-align: center;
         }
@@ -124,14 +217,15 @@
         /* ---- Previsão de entrega/retirada ---- */
         .previsao-box {
             background: var(--light-bg, #F5F5F5);
-            border-radius: 10px;
-            padding: 12px 16px;
+            border: 1px solid #eee;
+            border-radius: 14px;
+            padding: 14px 18px;
             font-size: 14px;
             font-weight: 600;
             display: flex;
             flex-direction: column;
             gap: 2px;
-            margin: 18px 0;
+            margin: 20px 0;
         }
 
         .previsao-box:empty {
@@ -140,14 +234,15 @@
         }
 
         .previsao-box.previsao-concluida {
-            background: #D4EDDA;
+            background: #E6F7ED;
+            border-color: #c3ebd3;
             color: #155724;
         }
 
         .previsao-hora {
             font-size: 12px;
             font-weight: 500;
-            color: #888;
+            color: #999;
         }
 
         .previsao-concluida .previsao-hora {
@@ -158,36 +253,57 @@
         #mapaMotoboy {
             width: 100%;
             height: 260px;
-            border-radius: 12px;
+            border-radius: 16px;
             margin-top: 8px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.08);
         }
 
         .mapa-legenda {
             font-size: 12px;
             color: #999;
-            margin-top: 6px;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .mapa-legenda-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #3498DB;
+            display: inline-block;
+            animation: piscar 1.4s ease infinite;
+        }
+
+        @keyframes piscar {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
         }
 
         /* ---- Detalhes do pedido (itens, endereço, observações, total) ---- */
         .rastreio-secao {
-            border-top: 1px solid #eee;
-            padding-top: 16px;
-            margin-top: 16px;
+            border-top: 1px solid #f0f0f0;
+            padding-top: 18px;
+            margin-top: 18px;
         }
 
         .rastreio-secao-titulo {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
-            color: #999;
-            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+            color: #aaa;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .rastreio-itens-lista {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 14px;
         }
 
         .rastreio-item-linha {
@@ -199,8 +315,12 @@
 
         .rastreio-item-qtd {
             font-weight: 700;
-            color: var(--primary-color, #C20000);
+            color: #fff;
+            background: var(--primary-color, #C20000);
             flex-shrink: 0;
+            font-size: 11px;
+            padding: 2px 7px;
+            border-radius: 6px;
         }
 
         .rastreio-item-nome {
@@ -210,23 +330,25 @@
         }
 
         .rastreio-item-preco {
-            color: #888;
+            color: #999;
             font-size: 13px;
             flex-shrink: 0;
+            font-weight: 500;
         }
 
         .rastreio-item-extras {
             font-size: 12px;
-            color: #888;
-            margin-top: 3px;
-            margin-left: 28px;
+            color: #999;
+            margin-top: 4px;
+            margin-left: 34px;
         }
 
         .rastreio-endereco,
         .rastreio-obs {
             font-size: 14px;
             line-height: 1.5;
-            color: #333;
+            color: #444;
+            font-weight: 500;
         }
 
         .rastreio-vazio {
@@ -238,15 +360,52 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-top: 2px solid #eee;
-            margin-top: 18px;
-            padding-top: 14px;
-            font-size: 16px;
+            border-top: 2px dashed #eee;
+            margin-top: 20px;
+            padding-top: 16px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #666;
         }
 
         .rastreio-total-row strong {
-            font-size: 20px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 22px;
             color: var(--primary-color, #C20000);
+        }
+
+        /* ---- Ajuda / suporte fixo no rodapé ---- */
+        .rastreio-ajuda-bar {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #fff;
+            border-top: 1px solid #eee;
+            padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            box-shadow: 0 -4px 14px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        .rastreio-ajuda-bar .btn {
+            max-width: 480px;
+            flex: 1;
+        }
+
+        /* ---- Skeleton de carregamento ---- */
+        .skeleton-linha {
+            background: linear-gradient(90deg, #eee 25%, #f5f5f5 37%, #eee 63%);
+            background-size: 400% 100%;
+            animation: skeletonAnim 1.4s ease infinite;
+            border-radius: 8px;
+        }
+
+        @keyframes skeletonAnim {
+            0% { background-position: 100% 50%; }
+            100% { background-position: 0 50%; }
         }
 
         .erro-box {
@@ -257,15 +416,31 @@
     </style>
 </head>
 <body>
-    <div class="rastreio-container">
-        <div class="rastreio-header">
+    <div class="rastreio-topbar">
+        <div class="rastreio-topbar-inner">
             <img src="logo.png?v=1" alt="ArretadoGo">
-            <strong>Acompanhar Pedido</strong>
+            <div>
+                <div class="rastreio-topbar-titulo">Acompanhar Pedido</div>
+                <div class="rastreio-topbar-sub">Atualizado em tempo real</div>
+            </div>
         </div>
+    </div>
 
+    <div class="rastreio-container">
         <div id="conteudoRastreio">
-            <div class="erro-box">Carregando pedido... ⏳</div>
+            <div class="rastreio-card">
+                <div class="skeleton-linha" style="height:14px; width:40%; margin-bottom:10px;"></div>
+                <div class="skeleton-linha" style="height:26px; width:65%; margin-bottom:26px;"></div>
+                <div class="skeleton-linha" style="height:60px; width:100%; margin-bottom:20px;"></div>
+                <div class="skeleton-linha" style="height:16px; width:90%; margin-bottom:10px;"></div>
+                <div class="skeleton-linha" style="height:16px; width:75%;"></div>
+            </div>
         </div>
+    </div>
+
+    <div class="rastreio-ajuda-bar" id="ajudaBar" style="display:none;">
+        <button class="btn btn-secondary" id="btnCompartilhar">🔗 Compartilhar</button>
+        <button class="btn btn-primary" id="btnAjudaWhatsapp">💬 Precisa de ajuda?</button>
     </div>
 
     <div class="toast" id="toast"></div>
