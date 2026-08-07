@@ -255,22 +255,13 @@ async function atualizarLocalizacaoPedido(pedidoId, lat, lng) {
     }
 }
 
-// Cliente registra o token de notificação push do PRÓPRIO pedido (rastreio.html).
-async function salvarTokenNotificacaoPedido(pedidoId, token) {
+// Função para atualizar status do pedido.
+// "extra" permite gravar campos adicionais junto (ex: motoboy.js manda motoboyId/motoboyNome
+// ao marcar "saiu_entrega", pra saber depois quem entregou cada pedido no histórico).
+async function updatePedidoStatus(id, status, extra) {
     try {
         const { db } = await getFirebase();
-        await db.collection('pedidos').doc(pedidoId).update({ tokenNotificacao: token });
-    } catch (error) {
-        console.error('Erro ao salvar token de notificação:', error);
-        throw error;
-    }
-}
-
-// Função para atualizar status do pedido
-async function updatePedidoStatus(id, status) {
-    try {
-        const { db } = await getFirebase();
-        const dadosAtualizacao = { status };
+        const dadosAtualizacao = { status, ...(extra || {}) };
 
         // Registra o momento exato em que a entrega foi confirmada — usado pelo dashboard
         // pra calcular "vendas de hoje/mês" pela data real da venda, não pela data em que o
@@ -701,69 +692,11 @@ async function atualizarLocalizacaoPedido(pedidoId, lat, lng) {
     }
 }
 
-// ========== NOTIFICAÇÕES PUSH (CLIENTE) ==========
-// Carrega o SDK de Messaging só quando alguém realmente clica em "Ativar notificações"
-// (rastreio.html) — assim as outras páginas (loja, admin, motoboy) não carregam esse peso à toa.
-function carregarFirebaseMessaging() {
-    return new Promise((resolve, reject) => {
-        if (typeof firebase !== 'undefined' && firebase.messaging) {
-            resolve();
-            return;
-        }
-        const script = document.createElement('script');
-        script.src = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js';
-        script.onload = resolve;
-        script.onerror = () => reject(new Error('Falha ao carregar Firebase Messaging'));
-        document.head.appendChild(script);
-    });
-}
-
-// Pede permissão de notificação ao navegador, registra o service worker e retorna o token
-// de push (ou null se o usuário negar ou o navegador não suportar). VAPID_KEY precisa ser
-// gerada no Firebase Console (Configurações do Projeto > Cloud Messaging > Certificados
-// Web Push) e colada na constante logo abaixo.
-const VAPID_KEY = 'BJycZ4YN6PUPcuk_wm3Iw2GqumldmSn8BqZKJNXduOF1sC8b2dY62aXqoZ7WZxfzHi6XkRs2wqAzrzZ9m-_Q-2s';
-
-async function solicitarPermissaoNotificacao() {
-    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-        return { token: null, motivo: 'Este navegador não suporta notificações push.' };
-    }
-
-    // Se o usuário já negou/bloqueou antes, o Chrome nem mostra o popup de novo —
-    // é importante diferenciar esse caso do "usuário acabou de negar agora".
-    if (Notification.permission === 'denied') {
-        return { token: null, motivo: 'As notificações estão bloqueadas para este site nas configurações do navegador.' };
-    }
-
-    const permissao = await Notification.requestPermission();
-    if (permissao !== 'granted') {
-        return { token: null, motivo: 'Permissão de notificação não concedida.' };
-    }
-
-    try {
-        await getFirebase(); // garante que firebase.initializeApp() já rodou
-        await carregarFirebaseMessaging();
-
-        const registration = await navigator.serviceWorker.register('firebase-messaging-sw.js');
-        const messaging = firebase.messaging();
-        const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
-        return { token: token || null, motivo: token ? null : 'Firebase não retornou um token.' };
-    } catch (error) {
-        console.error('Erro ao obter token de notificação:', error);
-        return { token: null, motivo: error.message || String(error) };
-    }
-}
-
-// Cliente registra o token de notificação push do PRÓPRIO pedido (rastreio.html).
-async function salvarTokenNotificacaoPedido(pedidoId, token) {
-    try {
-        const { db } = await getFirebase();
-        await db.collection('pedidos').doc(pedidoId).update({ tokenNotificacao: token });
-    } catch (error) {
-        console.error('Erro ao salvar token de notificação:', error);
-        throw error;
-    }
-}
+// ========== NOTIFICAÇÕES PUSH: REMOVIDO ==========
+// (Exigia o plano pago Blaze pra rodar o Cloud Function que dispara o envio. Removido a
+// pedido — as funções antigas eram: carregarFirebaseMessaging, solicitarPermissaoNotificacao,
+// salvarTokenNotificacaoPedido. O firebase-messaging-sw.js também não é mais necessário —
+// pode apagar esse arquivo do servidor.)
 
 // Função para verificar usuário autenticado
 async function checkAuthStatus() {

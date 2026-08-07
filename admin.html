@@ -329,39 +329,128 @@
 
             <!-- SEÇÃO DASHBOARD -->
             <section class="section" id="dashboardSection">
-                <div class="section-header">
-                    <h2>Dashboard</h2>
-                    <span id="dashboardStoreStatus" class="store-status-badge" style="display:none;"></span>
+                <div class="section-header dashboard-header-row">
+                    <div>
+                        <h2>Dashboard</h2>
+                        <span id="dashboardStoreStatus" class="store-status-badge" style="display:none;"></span>
+                    </div>
+                    <div class="dashboard-quick-actions">
+                        <button class="btn btn-secondary btn-sm" id="qaVerPedidos">📋 Ver Pedidos</button>
+                        <button class="btn btn-secondary btn-sm" id="qaVerProdutos">📦 Produtos</button>
+                        <button class="btn btn-primary btn-sm" id="qaRelatorios">📊 Relatórios</button>
+                    </div>
                 </div>
 
+                <!-- ALERTAS AUTOMÁTICOS -->
+                <div id="dashboardAlertas" class="dashboard-alertas"></div>
+
+                <!-- KPIs PRINCIPAIS (com comparativo hoje x ontem) -->
                 <div class="dashboard-cards" id="dashboardCards">
                     <div class="dashboard-card" title="Pedidos recebidos hoje (qualquer status, exceto cancelado)">
-                        <span class="dashboard-card-label">Pedidos Hoje</span>
+                        <span class="dashboard-card-label">📥 Pedidos Hoje</span>
                         <span class="dashboard-card-value" id="dashPedidosHoje">—</span>
+                        <span class="dashboard-card-trend" id="trendPedidosHoje"></span>
                     </div>
                     <div class="dashboard-card" title="Soma dos pedidos marcados como Entregue hoje">
-                        <span class="dashboard-card-label">Faturamento Hoje</span>
+                        <span class="dashboard-card-label">💰 Faturamento Hoje</span>
                         <span class="dashboard-card-value" id="dashFaturamentoHoje">—</span>
+                        <span class="dashboard-card-trend" id="trendFaturamentoHoje"></span>
                     </div>
                     <div class="dashboard-card" title="Soma dos pedidos marcados como Entregue neste mês">
-                        <span class="dashboard-card-label">Faturamento no Mês</span>
+                        <span class="dashboard-card-label">📅 Faturamento no Mês</span>
                         <span class="dashboard-card-value" id="dashFaturamentoMes">—</span>
                     </div>
                     <div class="dashboard-card" title="Pedidos que ainda não foram entregues nem cancelados">
-                        <span class="dashboard-card-label">Pedidos em Aberto</span>
+                        <span class="dashboard-card-label">⏳ Pedidos em Aberto</span>
                         <span class="dashboard-card-value" id="dashPedidosAbertos">—</span>
                     </div>
                     <div class="dashboard-card" title="Faturamento do mês dividido pelo número de pedidos entregues no mês">
-                        <span class="dashboard-card-label">Ticket Médio (mês)</span>
+                        <span class="dashboard-card-label">🎯 Ticket Médio (mês)</span>
                         <span class="dashboard-card-value" id="dashTicketMedio">—</span>
+                    </div>
+                    <div class="dashboard-card" title="Tempo médio entre o pedido ser criado e ser marcado como Entregue, nos últimos 7 dias">
+                        <span class="dashboard-card-label">⏱️ Tempo Médio</span>
+                        <span class="dashboard-card-value" id="dashTempoMedio">—</span>
+                    </div>
+                </div>
+
+                <!-- STATUS OPERACIONAL -->
+                <div class="dashboard-status-row" id="dashboardStatusRow">
+                    <div class="status-mini-card status-mini-preparando">
+                        <span class="status-mini-valor" id="statusPreparando">0</span>
+                        <span class="status-mini-label">👨‍🍳 Em Preparo</span>
+                    </div>
+                    <div class="status-mini-card status-mini-saiu">
+                        <span class="status-mini-valor" id="statusSaiuEntrega">0</span>
+                        <span class="status-mini-label">🛵 Saiu p/ Entrega</span>
+                    </div>
+                    <div class="status-mini-card status-mini-finalizado">
+                        <span class="status-mini-valor" id="statusFinalizados">0</span>
+                        <span class="status-mini-label">✅ Finalizados Hoje</span>
+                    </div>
+                    <div class="status-mini-card status-mini-cancelado">
+                        <span class="status-mini-valor" id="statusCancelados">0</span>
+                        <span class="status-mini-label">❌ Cancelados Hoje</span>
+                    </div>
+                </div>
+
+                <!-- FINANCEIRO -->
+                <div class="dashboard-panel" id="painelFinanceiro">
+                    <h3>💵 Financeiro (Hoje)</h3>
+                    <div class="financeiro-grid">
+                        <div class="financeiro-item">
+                            <span class="financeiro-label">Faturamento</span>
+                            <span class="financeiro-valor" id="finFaturamento">—</span>
+                        </div>
+                        <div class="financeiro-item">
+                            <span class="financeiro-label">Custo</span>
+                            <span class="financeiro-valor" id="finCusto">—</span>
+                        </div>
+                        <div class="financeiro-item financeiro-destaque">
+                            <span class="financeiro-label">Lucro Líquido</span>
+                            <span class="financeiro-valor" id="finLucro">—</span>
+                        </div>
+                        <div class="financeiro-item">
+                            <span class="financeiro-label">Margem</span>
+                            <span class="financeiro-valor" id="finMargem">—</span>
+                        </div>
+                    </div>
+                    <p class="financeiro-aviso" id="financeiroAviso" style="display:none;">
+                        ℹ️ Cadastre o campo "Custo" nos produtos pra ver o lucro real aqui — sem isso, mostramos só o faturamento.
+                    </p>
+                </div>
+
+                <!-- GRÁFICOS -->
+                <div class="dashboard-grid">
+                    <div class="dashboard-panel">
+                        <h3>📈 Faturamento — Últimos 7 Dias</h3>
+                        <canvas id="chartFaturamento7d" height="180"></canvas>
+                    </div>
+                    <div class="dashboard-panel">
+                        <h3>📊 Pedidos por Dia — Últimos 7 Dias</h3>
+                        <canvas id="chartPedidos7d" height="180"></canvas>
                     </div>
                 </div>
 
                 <div class="dashboard-grid">
                     <div class="dashboard-panel">
-                        <h3>🔥 Mais Vendidos</h3>
-                        <div id="dashboardTopProdutos" class="dashboard-top-list">
+                        <h3>🔥 Ranking — Mais Vendidos</h3>
+                        <canvas id="chartTopProdutos" height="200"></canvas>
+                    </div>
+
+                    <div class="dashboard-panel">
+                        <h3>🐌 Produtos Parados (sem venda há 30 dias)</h3>
+                        <div id="dashboardParados" class="dashboard-top-list">
                             <p style="color:#999; font-size:13px;">Carregando...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="dashboard-panel">
+                        <h3>💎 Mais Lucrativos</h3>
+                        <div id="dashboardLucrativos" class="dashboard-top-list">
+                            <p style="color:#999; font-size:13px;">Cadastre o custo dos produtos pra ver esse ranking.</p>
                         </div>
                     </div>
 
@@ -373,6 +462,29 @@
                     </div>
                 </div>
             </section>
+
+            <!-- MODAL RELATÓRIOS -->
+            <div class="modal" id="relatoriosModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>📊 Exportar Relatório</h2>
+                        <button class="modal-close" id="closeRelatoriosModal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p style="margin-bottom:16px; color:var(--text-light); font-size:14px;">
+                            Gera uma planilha Excel com resumo financeiro, pedidos detalhados e produtos vendidos no período.
+                        </p>
+                        <div class="form-group">
+                            <label>Período</label>
+                            <div class="relatorio-periodo-opcoes">
+                                <button type="button" class="btn btn-secondary relatorio-periodo-btn" data-periodo="diario">📅 Hoje</button>
+                                <button type="button" class="btn btn-secondary relatorio-periodo-btn" data-periodo="semanal">🗓️ Últimos 7 dias</button>
+                                <button type="button" class="btn btn-secondary relatorio-periodo-btn" data-periodo="mensal">📆 Este mês</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- SEÇÃO PRODUTOS -->
             <section class="section" id="produtosSection" style="display: none;">
@@ -701,22 +813,29 @@
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="productPrice">Preço (R$) *</label>
+                                <label for="productPrice">Preço de Venda (R$) *</label>
                                 <input type="number" id="productPrice" class="input-field" placeholder="0.00" step="0.01" min="0" required>
                                 <span class="field-error" id="errProductPrice"></span>
                             </div>
 
                             <div class="form-group">
+                                <label for="productCost">Custo (R$)</label>
+                                <input type="number" id="productCost" class="input-field" placeholder="0.00" step="0.01" min="0">
+                                <small>Opcional — usado pra calcular lucro e margem no Dashboard. Deixe em branco se não quiser acompanhar isso ainda.</small>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
                                 <label for="productStock">Estoque *</label>
                                 <input type="number" id="productStock" class="input-field" placeholder="10" min="0" required>
                                 <span class="field-error" id="errProductStock"></span>
                             </div>
-                        </div>
 
-                        <div class="form-group">
-                            <label for="productEstoqueMinimo">Alertar quando estoque atingir</label>
-                            <input type="number" id="productEstoqueMinimo" class="input-field" placeholder="5" min="0">
-                            <small>Abaixo (ou igual a) esse número, o produto aparece no alerta de estoque baixo do Dashboard.</small>
+                            <div class="form-group">
+                                <label for="productEstoqueMinimo">Alertar quando estoque atingir</label>
+                                <input type="number" id="productEstoqueMinimo" class="input-field" placeholder="5" min="0">
+                            </div>
                         </div>
 
                         <div class="form-group checkbox">
@@ -815,6 +934,7 @@
     <!-- TOAST -->
     <div class="toast" id="toast"></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="pedido-status-utils.js"></script>

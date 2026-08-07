@@ -158,6 +158,18 @@ function inicializarEventosAdmin() {
         });
     });
 
+    // Dashboard - ações rápidas
+    document.getElementById('qaVerPedidos')?.addEventListener('click', () => mudarSecao('pedidos'));
+    document.getElementById('qaVerProdutos')?.addEventListener('click', () => mudarSecao('produtos'));
+    document.getElementById('qaRelatorios')?.addEventListener('click', () => abrirModal('relatoriosModal'));
+    document.getElementById('closeRelatoriosModal')?.addEventListener('click', () => fecharModal('relatoriosModal'));
+    document.querySelectorAll('.relatorio-periodo-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            exportarRelatorio(btn.dataset.periodo);
+            fecharModal('relatoriosModal');
+        });
+    });
+
     // Produtos
     document.getElementById('newProductBtn').addEventListener('click', () => {
         produtoEmEdicao = null;
@@ -364,6 +376,7 @@ function editarProduto(produtoId) {
     document.getElementById('productName').value = produtoEmEdicao.nome;
     document.getElementById('productCategory').value = produtoEmEdicao.categoria;
     document.getElementById('productPrice').value = produtoEmEdicao.preco;
+    document.getElementById('productCost').value = produtoEmEdicao.custo ?? '';
     document.getElementById('productStock').value = produtoEmEdicao.estoque || 0;
     document.getElementById('productEstoqueMinimo').value = produtoEmEdicao.estoqueMinimo ?? ESTOQUE_MINIMO_PADRAO;
     document.getElementById('productControlaEstoque').checked = produtoEmEdicao.controlaEstoque !== false;
@@ -383,6 +396,8 @@ async function salvarProduto() {
     const nome = document.getElementById('productName').value.trim();
     const categoria = document.getElementById('productCategory').value;
     const preco = parseFloat(document.getElementById('productPrice').value);
+    const custoInput = parseFloat(document.getElementById('productCost').value);
+    const custo = isNaN(custoInput) ? null : custoInput;
     const estoque = parseInt(document.getElementById('productStock').value);
     const estoqueMinimoInput = parseInt(document.getElementById('productEstoqueMinimo').value);
     const estoqueMinimo = isNaN(estoqueMinimoInput) ? ESTOQUE_MINIMO_PADRAO : estoqueMinimoInput;
@@ -421,6 +436,7 @@ async function salvarProduto() {
         nome,
         categoria,
         preco,
+        custo,
         estoque,
         estoqueMinimo,
         controlaEstoque,
@@ -1135,9 +1151,7 @@ async function salvarConfiguracoes() {
 }
 
 // ========== DASHBOARD ==========
-function formatarMoeda(valor) {
-    return `R$ ${Number(valor || 0).toFixed(2).replace('.', ',')}`;
-}
+// formatarMoeda agora mora em pedido-status-utils.js (compartilhado com motoboy.js)
 
 function renderizarDashboard() {
     const cardsEl = document.getElementById('dashboardCards');
@@ -1158,47 +1172,43 @@ function renderizarDashboard() {
         }
     }
 
-    // ---- Pedidos recebidos / vendas confirmadas, faturamento, ticket médio ----
-    const agora = new Date();
-    const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-    const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
-
     const paraData = (timestamp) => {
         if (!timestamp) return null;
-        // Timestamp do Firestore tem .toDate(); em alguns casos já pode vir como Date
         return typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
     };
 
-    // "Pedidos Hoje" mostra o volume de pedidos que ENTRARAM hoje (qualquer status, exceto
-    // cancelado) — é uma métrica operacional (quanta gente pediu hoje), baseada em criadoEm.
+    const agora = new Date();
+    const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+    const inicioOntem = new Date(inicioHoje);
+    inicioOntem.setDate(inicioOntem.getDate() - 1);
+    const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+
+    // ================= KPIs PRINCIPAIS =================
     const pedidosRecebidosHoje = pedidosAdmin.filter(p => {
         if (p.status === 'cancelado') return false;
         const d = paraData(p.criadoEm);
         return d && d >= inicioHoje;
     });
+    // Mesma contagem de ontem, mas só até o mesmo horário de agora — pra comparar "maçã com maçã"
+    // (senão o dia de ontem, que já terminou, sempre pareceria "maior" só por estar completo).
+    const horaEquivalenteOntem = new Date(inicioOntem.getTime() + (agora - inicioHoje));
+    const pedidosRecebidosOntemMesmaHora = pedidosAdmin.filter(p => {
+        if (p.status === 'cancelado') return false;
+        const d = paraData(p.criadoEm);
+        return d && d >= inicioOntem && d < horaEquivalenteOntem;
+    });
 
-    // Faturamento e Ticket Médio só contam VENDAS CONFIRMADAS (pedidos com status "entregue"),
-    // na data em que a entrega foi de fato confirmada — não na data em que o pedido foi criado.
-    // Assim um pedido criado ontem e entregue hoje conta como venda de hoje (e não fica "perdido"
-    // no dia anterior). Pedidos antigos sem o campo "entregueEm" (anteriores a essa mudança) usam
-    // a data de criação como aproximação, pra não sumir do histórico.
     const pedidosEntregues = pedidosAdmin.filter(p => p.status === 'entregue');
     const dataDaVenda = (p) => paraData(p.entregueEm) || paraData(p.criadoEm);
 
-    const vendasHoje = pedidosEntregues.filter(p => {
-        const d = dataDaVenda(p);
-        return d && d >= inicioHoje;
-    });
-    const vendasMes = pedidosEntregues.filter(p => {
-        const d = dataDaVenda(p);
-        return d && d >= inicioMes;
-    });
+    const vendasHoje = pedidosEntregues.filter(p => { const d = dataDaVenda(p); return d && d >= inicioHoje; });
+    const vendasOntemMesmaHora = pedidosEntregues.filter(p => { const d = dataDaVenda(p); return d && d >= inicioOntem && d < horaEquivalenteOntem; });
+    const vendasMes = pedidosEntregues.filter(p => { const d = dataDaVenda(p); return d && d >= inicioMes; });
 
-    const pedidosAbertos = pedidosAdmin.filter(p =>
-        ['pendente', 'preparando', 'saiu_entrega'].includes(p.status || 'pendente')
-    );
+    const pedidosAbertos = pedidosAdmin.filter(p => ['pendente', 'preparando', 'saiu_entrega'].includes(p.status || 'pendente'));
 
     const faturamentoHoje = vendasHoje.reduce((soma, p) => soma + (p.total || 0), 0);
+    const faturamentoOntemMesmaHora = vendasOntemMesmaHora.reduce((soma, p) => soma + (p.total || 0), 0);
     const faturamentoMes = vendasMes.reduce((soma, p) => soma + (p.total || 0), 0);
     const ticketMedio = vendasMes.length > 0 ? faturamentoMes / vendasMes.length : 0;
 
@@ -1208,54 +1218,185 @@ function renderizarDashboard() {
     document.getElementById('dashPedidosAbertos').textContent = pedidosAbertos.length;
     document.getElementById('dashTicketMedio').textContent = formatarMoeda(ticketMedio);
 
+    exibirTendencia('trendPedidosHoje', pedidosRecebidosHoje.length, pedidosRecebidosOntemMesmaHora.length, 'pedido(s)');
+    exibirTendencia('trendFaturamentoHoje', faturamentoHoje, faturamentoOntemMesmaHora, null, formatarMoeda);
 
-    // ---- Mais vendidos (top 5 por quantidadeVendida) ----
-    const topEl = document.getElementById('dashboardTopProdutos');
-    if (topEl) {
-        // Recalcular quantidadeVendida dinamicamente baseado em pedidos reais
-        // Isso evita o problema de vendas "fantasmas" quando um pedido é deletado
-        const produtosComVendas = [...produtosAdmin].map(p => {
-            // Contar quantas vezes este produto aparece em pedidos confirmados (entregues)
-            const vendidosReais = pedidosAdmin
-                .filter(pedido => pedido.status === 'entregue') // Só conta vendas confirmadas
-                .reduce((total, pedido) => {
-                    if (Array.isArray(pedido.itens)) {
-                        const item = pedido.itens.find(i => i.id === p.id);
-                        return total + (item?.quantidade || 0);
-                    }
-                    return total;
-                }, 0);
-            
-            return { ...p, quantidadeVendidaReal: vendidosReais };
-        });
-
-        const topProdutos = produtosComVendas
-            .filter(p => p.quantidadeVendidaReal > 0)
-            .sort((a, b) => b.quantidadeVendidaReal - a.quantidadeVendidaReal)
-            .slice(0, 5);
-
-        if (topProdutos.length === 0) {
-            topEl.innerHTML = '<p style="color:#999; font-size:13px;">Ainda não há vendas registradas.</p>';
+    // ---- Tempo médio de entrega (últimos 7 dias) ----
+    const inicio7dias = new Date(inicioHoje);
+    inicio7dias.setDate(inicio7dias.getDate() - 6);
+    const entreguesUltimos7Dias = pedidosEntregues.filter(p => {
+        const d = paraData(p.entregueEm);
+        return d && d >= inicio7dias && paraData(p.criadoEm);
+    });
+    const tempoMedioEl = document.getElementById('dashTempoMedio');
+    if (tempoMedioEl) {
+        if (entreguesUltimos7Dias.length === 0) {
+            tempoMedioEl.textContent = '—';
         } else {
-            const maiorVendido = topProdutos[0].quantidadeVendidaReal || 1;
-            topEl.innerHTML = topProdutos.map(p => {
-                const largura = Math.max(8, Math.round(((p.quantidadeVendidaReal || 0) / maiorVendido) * 100));
-                return `
-                    <div class="dashboard-top-item">
-                        <div class="dashboard-top-item-header">
-                            <span>${p.nome}</span>
-                            <strong>${p.quantidadeVendidaReal || 0} vendidos</strong>
-                        </div>
-                        <div class="dashboard-top-bar-track">
-                            <div class="dashboard-top-bar-fill" style="width:${largura}%;"></div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+            const somaMinutos = entreguesUltimos7Dias.reduce((soma, p) => {
+                const criado = paraData(p.criadoEm);
+                const entregue = paraData(p.entregueEm);
+                return soma + Math.max(0, (entregue - criado) / 60000);
+            }, 0);
+            const media = Math.round(somaMinutos / entreguesUltimos7Dias.length);
+            tempoMedioEl.textContent = `${media} min`;
         }
     }
 
-    // ---- Alerta de estoque baixo ----
+    // ================= STATUS OPERACIONAL =================
+    document.getElementById('statusPreparando').textContent = pedidosAdmin.filter(p => p.status === 'preparando').length;
+    document.getElementById('statusSaiuEntrega').textContent = pedidosAdmin.filter(p => p.status === 'saiu_entrega').length;
+    document.getElementById('statusFinalizados').textContent = vendasHoje.length;
+    document.getElementById('statusCancelados').textContent = pedidosAdmin.filter(p => {
+        if (p.status !== 'cancelado') return false;
+        const d = paraData(p.criadoEm);
+        return d && d >= inicioHoje;
+    }).length;
+
+    // ================= FINANCEIRO (HOJE) =================
+    const produtoPorId = new Map(produtosAdmin.map(p => [p.id, p]));
+    const algumProdutoTemCusto = produtosAdmin.some(p => typeof p.custo === 'number');
+
+    let custoHoje = 0;
+    let custoConhecido = true;
+    vendasHoje.forEach(pedido => {
+        (pedido.itens || []).forEach(item => {
+            const produto = produtoPorId.get(item.id);
+            if (produto && typeof produto.custo === 'number') {
+                custoHoje += produto.custo * (item.quantidade || 0);
+            } else {
+                custoConhecido = false;
+            }
+        });
+    });
+
+    const lucroHoje = faturamentoHoje - custoHoje;
+    const margemHoje = faturamentoHoje > 0 ? (lucroHoje / faturamentoHoje) * 100 : 0;
+
+    document.getElementById('finFaturamento').textContent = formatarMoeda(faturamentoHoje);
+    document.getElementById('finCusto').textContent = algumProdutoTemCusto ? formatarMoeda(custoHoje) : '—';
+    document.getElementById('finLucro').textContent = algumProdutoTemCusto ? formatarMoeda(lucroHoje) : '—';
+    document.getElementById('finMargem').textContent = algumProdutoTemCusto ? `${margemHoje.toFixed(1)}%` : '—';
+    document.getElementById('financeiroAviso').style.display = algumProdutoTemCusto ? 'none' : 'block';
+    if (algumProdutoTemCusto && !custoConhecido) {
+        document.getElementById('financeiroAviso').style.display = 'block';
+        document.getElementById('financeiroAviso').textContent = 'ℹ️ Alguns produtos vendidos hoje não têm custo cadastrado — o custo/lucro acima pode estar subestimado.';
+    }
+
+    // ================= ALERTAS AUTOMÁTICOS =================
+    const alertasEl = document.getElementById('dashboardAlertas');
+    if (alertasEl) {
+        const alertas = [];
+
+        // Atraso: pedidos abertos há mais tempo que o previsto (tempo de entrega configurado + 15 min de folga)
+        const tempoEntregaConfigurado = parseInt(document.getElementById('deliveryTime')?.value) || 30;
+        const tempoToleranciaMin = tempoEntregaConfigurado + 15;
+        const pedidosAtrasados = pedidosAbertos.filter(p => {
+            const d = paraData(p.criadoEm);
+            if (!d) return false;
+            return (agora - d) / 60000 > tempoToleranciaMin;
+        });
+        if (pedidosAtrasados.length > 0) {
+            alertas.push(`<div class="alerta-item alerta-danger">⏰ ${pedidosAtrasados.length} pedido(s) em aberto há mais de ${tempoToleranciaMin} min — confira!</div>`);
+        }
+
+        // Queda de vendas: compara pedidos de hoje x ontem no mesmo horário
+        if (pedidosRecebidosOntemMesmaHora.length >= 3) {
+            const quedaPercentual = ((pedidosRecebidosOntemMesmaHora.length - pedidosRecebidosHoje.length) / pedidosRecebidosOntemMesmaHora.length) * 100;
+            if (quedaPercentual >= 40) {
+                alertas.push(`<div class="alerta-item alerta-warning">📉 Pedidos ${quedaPercentual.toFixed(0)}% abaixo de ontem neste mesmo horário.</div>`);
+            }
+        }
+
+        // Estoque baixo (contagem rápida, detalhe completo no painel abaixo)
+        const qtdEstoqueBaixo = produtosAdmin.filter(p => {
+            if (p.controlaEstoque === false) return false;
+            const minimo = p.estoqueMinimo ?? ESTOQUE_MINIMO_PADRAO;
+            return (p.estoque || 0) <= minimo;
+        }).length;
+        if (qtdEstoqueBaixo > 0) {
+            alertas.push(`<div class="alerta-item alerta-warning">📦 ${qtdEstoqueBaixo} produto(s) com estoque baixo.</div>`);
+        }
+
+        alertasEl.innerHTML = alertas.join('');
+    }
+
+    // ================= PRODUTOS: recalcular vendas reais =================
+    const produtosComVendas = [...produtosAdmin].map(p => {
+        const vendidosReais = pedidosAdmin
+            .filter(pedido => pedido.status === 'entregue')
+            .reduce((total, pedido) => {
+                if (Array.isArray(pedido.itens)) {
+                    const item = pedido.itens.find(i => i.id === p.id);
+                    return total + (item?.quantidade || 0);
+                }
+                return total;
+            }, 0);
+        return { ...p, quantidadeVendidaReal: vendidosReais };
+    });
+
+    // ---- Mais vendidos (gráfico) ----
+    const topProdutos = produtosComVendas
+        .filter(p => p.quantidadeVendidaReal > 0)
+        .sort((a, b) => b.quantidadeVendidaReal - a.quantidadeVendidaReal)
+        .slice(0, 6);
+    renderizarChartTopProdutos(topProdutos);
+
+    // ---- Mais lucrativos (só produtos com custo cadastrado) ----
+    const lucrativosEl = document.getElementById('dashboardLucrativos');
+    if (lucrativosEl) {
+        const comCusto = produtosComVendas.filter(p => typeof p.custo === 'number' && p.quantidadeVendidaReal > 0);
+        if (comCusto.length === 0) {
+            lucrativosEl.innerHTML = '<p style="color:#999; font-size:13px;">Cadastre o custo dos produtos pra ver esse ranking.</p>';
+        } else {
+            const rankLucro = comCusto
+                .map(p => ({ ...p, lucroTotal: (p.preco - p.custo) * p.quantidadeVendidaReal }))
+                .sort((a, b) => b.lucroTotal - a.lucroTotal)
+                .slice(0, 5);
+            const maiorLucro = rankLucro[0]?.lucroTotal || 1;
+            lucrativosEl.innerHTML = rankLucro.map(p => `
+                <div class="dashboard-top-item">
+                    <div class="dashboard-top-item-header">
+                        <span>${p.nome}</span>
+                        <strong>${formatarMoeda(p.lucroTotal)}</strong>
+                    </div>
+                    <div class="dashboard-top-bar-track">
+                        <div class="dashboard-top-bar-fill" style="width:${Math.max(8, Math.round((p.lucroTotal / maiorLucro) * 100))}%; background:var(--success-color);"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+    }
+
+    // ---- Produtos parados (ativos, sem venda nos últimos 30 dias) ----
+    const paradosEl = document.getElementById('dashboardParados');
+    if (paradosEl) {
+        const inicio30dias = new Date(inicioHoje);
+        inicio30dias.setDate(inicio30dias.getDate() - 30);
+        const vendidoNosUltimos30Dias = new Set();
+        pedidosAdmin
+            .filter(p => p.status === 'entregue' && paraData(p.entregueEm) >= inicio30dias)
+            .forEach(p => (p.itens || []).forEach(item => vendidoNosUltimos30Dias.add(item.id)));
+
+        const parados = produtosAdmin.filter(p => p.ativo !== false && !vendidoNosUltimos30Dias.has(p.id));
+
+        if (parados.length === 0) {
+            paradosEl.innerHTML = '<p style="color:#999; font-size:13px;">Todo produto ativo vendeu pelo menos uma vez nos últimos 30 dias 🎉</p>';
+        } else {
+            paradosEl.innerHTML = parados.slice(0, 8).map(p => `
+                <div class="dashboard-estoque-item">
+                    <img src="${p.imagem}" alt="${p.nome}" onerror="this.style.visibility='hidden'">
+                    <div class="dashboard-estoque-info">
+                        <strong>${p.nome}</strong>
+                        <small>Sem vendas há 30+ dias</small>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="editarProduto('${p.id}')">Ver</button>
+                </div>
+            `).join('');
+        }
+    }
+
+    // ---- Alerta de estoque baixo (painel detalhado) ----
     const estoqueEl = document.getElementById('dashboardEstoqueBaixo');
     if (estoqueEl) {
         const produtosBaixos = produtosAdmin.filter(p => {
@@ -1282,7 +1423,242 @@ function renderizarDashboard() {
             }).join('');
         }
     }
+
+    // ================= GRÁFICOS DE 7 DIAS =================
+    renderizarChartsUltimos7Dias(pedidosEntregues, pedidosAdmin, paraData, inicioHoje);
 }
+
+// Mostra "▲ 12% vs ontem" / "▼ 8% vs ontem" / "▬ igual a ontem" ao lado de um KPI.
+// formatador opcional (ex: formatarMoeda) só usado no texto de log — a comparação em si é sempre numérica.
+function exibirTendencia(elementId, valorHoje, valorOntem, sufixo, formatador) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    if (!valorOntem || valorOntem === 0) {
+        el.className = 'dashboard-card-trend trend-flat';
+        el.textContent = valorHoje > 0 ? '🆕 sem comparativo de ontem' : '';
+        return;
+    }
+
+    const variacao = ((valorHoje - valorOntem) / valorOntem) * 100;
+    const arredondado = Math.round(Math.abs(variacao));
+
+    if (Math.abs(variacao) < 1) {
+        el.className = 'dashboard-card-trend trend-flat';
+        el.textContent = '▬ igual a ontem (mesmo horário)';
+    } else if (variacao > 0) {
+        el.className = 'dashboard-card-trend trend-up';
+        el.textContent = `▲ ${arredondado}% vs ontem`;
+    } else {
+        el.className = 'dashboard-card-trend trend-down';
+        el.textContent = `▼ ${arredondado}% vs ontem`;
+    }
+}
+
+// ================= GRÁFICOS (Chart.js) =================
+let chartFaturamentoInstance = null;
+let chartPedidosInstance = null;
+let chartTopProdutosInstance = null;
+
+function obterUltimosNDias(n, inicioHoje) {
+    const dias = [];
+    for (let i = n - 1; i >= 0; i--) {
+        const d = new Date(inicioHoje);
+        d.setDate(d.getDate() - i);
+        dias.push(d);
+    }
+    return dias;
+}
+
+function renderizarChartsUltimos7Dias(pedidosEntregues, todosPedidos, paraData, inicioHoje) {
+    if (typeof Chart === 'undefined') return; // CDN não carregou (ex: sem internet) — dashboard segue funcionando sem os gráficos
+
+    const dias = obterUltimosNDias(7, inicioHoje);
+    const labels = dias.map(d => d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' }));
+
+    const faturamentoPorDia = dias.map(dia => {
+        const fimDia = new Date(dia); fimDia.setDate(fimDia.getDate() + 1);
+        return pedidosEntregues
+            .filter(p => { const d = paraData(p.entregueEm) || paraData(p.criadoEm); return d && d >= dia && d < fimDia; })
+            .reduce((soma, p) => soma + (p.total || 0), 0);
+    });
+
+    const pedidosPorDia = dias.map(dia => {
+        const fimDia = new Date(dia); fimDia.setDate(fimDia.getDate() + 1);
+        return todosPedidos.filter(p => {
+            if (p.status === 'cancelado') return false;
+            const d = paraData(p.criadoEm);
+            return d && d >= dia && d < fimDia;
+        }).length;
+    });
+
+    const ctxFat = document.getElementById('chartFaturamento7d');
+    if (ctxFat) {
+        if (chartFaturamentoInstance) chartFaturamentoInstance.destroy();
+        chartFaturamentoInstance = new Chart(ctxFat, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{ label: 'Faturamento', data: faturamentoPorDia, backgroundColor: '#C20000', borderRadius: 6 }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { callback: (v) => `R$ ${v}` } } }
+            }
+        });
+    }
+
+    const ctxPed = document.getElementById('chartPedidos7d');
+    if (ctxPed) {
+        if (chartPedidosInstance) chartPedidosInstance.destroy();
+        chartPedidosInstance = new Chart(ctxPed, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{ label: 'Pedidos', data: pedidosPorDia, borderColor: '#3498DB', backgroundColor: 'rgba(52,152,219,0.15)', fill: true, tension: 0.3 }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+        });
+    }
+}
+
+function renderizarChartTopProdutos(topProdutos) {
+    const ctx = document.getElementById('chartTopProdutos');
+    if (!ctx || typeof Chart === 'undefined') return;
+
+    if (chartTopProdutosInstance) chartTopProdutosInstance.destroy();
+
+    if (topProdutos.length === 0) {
+        return; // canvas fica vazio, sem gráfico — evita erro do Chart.js com dataset vazio
+    }
+
+    chartTopProdutosInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: topProdutos.map(p => p.nome),
+            datasets: [{ label: 'Vendidos', data: topProdutos.map(p => p.quantidadeVendidaReal), backgroundColor: '#F39C12', borderRadius: 6 }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+    });
+}
+
+// ================= EXPORTAR RELATÓRIO (EXCEL) =================
+function intervaloRelatorio(periodo, inicioHoje) {
+    if (periodo === 'diario') {
+        const fim = new Date(inicioHoje); fim.setDate(fim.getDate() + 1);
+        return { inicio: inicioHoje, fim, label: 'Diário' };
+    }
+    if (periodo === 'semanal') {
+        const inicio = new Date(inicioHoje); inicio.setDate(inicio.getDate() - 6);
+        const fim = new Date(inicioHoje); fim.setDate(fim.getDate() + 1);
+        return { inicio, fim, label: 'Últimos 7 dias' };
+    }
+    // mensal
+    const agora = new Date();
+    const inicio = new Date(agora.getFullYear(), agora.getMonth(), 1);
+    const fim = new Date(agora.getFullYear(), agora.getMonth() + 1, 1);
+    return { inicio, fim, label: 'Mês atual' };
+}
+
+function exportarRelatorio(periodo) {
+    if (typeof XLSX === 'undefined') {
+        showToast('Biblioteca de planilha não carregou — confira sua conexão e tente de novo', 'error');
+        return;
+    }
+
+    const paraData = (timestamp) => {
+        if (!timestamp) return null;
+        return typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
+    };
+
+    const agora = new Date();
+    const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+    const { inicio, fim, label } = intervaloRelatorio(periodo, inicioHoje);
+
+    const pedidosNoPeriodo = pedidosAdmin.filter(p => {
+        const d = paraData(p.criadoEm);
+        return d && d >= inicio && d < fim;
+    });
+    const entreguesNoPeriodo = pedidosNoPeriodo.filter(p => p.status === 'entregue');
+    const canceladosNoPeriodo = pedidosNoPeriodo.filter(p => p.status === 'cancelado');
+
+    const produtoPorId = new Map(produtosAdmin.map(p => [p.id, p]));
+    let faturamento = 0, custo = 0;
+    entreguesNoPeriodo.forEach(p => {
+        faturamento += (p.total || 0);
+        (p.itens || []).forEach(item => {
+            const produto = produtoPorId.get(item.id);
+            if (produto && typeof produto.custo === 'number') custo += produto.custo * (item.quantidade || 0);
+        });
+    });
+    const lucro = faturamento - custo;
+
+    // ---- Aba Resumo ----
+    const resumo = [
+        ['Relatório', label],
+        ['Gerado em', agora.toLocaleString('pt-BR')],
+        [],
+        ['Pedidos recebidos', pedidosNoPeriodo.length],
+        ['Pedidos entregues', entreguesNoPeriodo.length],
+        ['Pedidos cancelados', canceladosNoPeriodo.length],
+        ['Faturamento', faturamento],
+        ['Custo (produtos com custo cadastrado)', custo],
+        ['Lucro líquido (estimado)', lucro],
+        ['Ticket médio', entreguesNoPeriodo.length ? faturamento / entreguesNoPeriodo.length : 0]
+    ];
+
+    // ---- Aba Pedidos ----
+    const pedidosSheet = [
+        ['Código', 'Cliente', 'Telefone', 'Tipo', 'Status', 'Total', 'Criado em', 'Entregue em']
+    ];
+    pedidosNoPeriodo.forEach(p => {
+        pedidosSheet.push([
+            p.codigoPedido || p.id,
+            p.nome || '',
+            p.telefone || '',
+            p.tipoEntrega === 'delivery' ? 'Delivery' : 'Retirada',
+            p.status || 'pendente',
+            p.total || 0,
+            paraData(p.criadoEm)?.toLocaleString('pt-BR') || '',
+            paraData(p.entregueEm)?.toLocaleString('pt-BR') || ''
+        ]);
+    });
+
+    // ---- Aba Produtos vendidos ----
+    const vendasPorProduto = new Map();
+    entreguesNoPeriodo.forEach(p => {
+        (p.itens || []).forEach(item => {
+            const atual = vendasPorProduto.get(item.id) || { nome: item.nome, quantidade: 0, total: 0 };
+            atual.quantidade += item.quantidade || 0;
+            atual.total += (item.preco || 0) * (item.quantidade || 0);
+            vendasPorProduto.set(item.id, atual);
+        });
+    });
+    const produtosSheet = [['Produto', 'Quantidade Vendida', 'Faturamento Gerado']];
+    [...vendasPorProduto.values()]
+        .sort((a, b) => b.quantidade - a.quantidade)
+        .forEach(v => produtosSheet.push([v.nome, v.quantidade, v.total]));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumo), 'Resumo');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pedidosSheet), 'Pedidos');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(produtosSheet), 'Produtos');
+
+    const nomeArquivo = `relatorio-${periodo}-${inicioHoje.toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, nomeArquivo);
+    showToast('Relatório baixado!', 'success');
+}
+
 
 // ========== LOGOUT ==========
 document.getElementById('logoutBtn')?.addEventListener('click', async () => {

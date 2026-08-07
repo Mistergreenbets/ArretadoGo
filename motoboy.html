@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Área do Motoboy - ArretadoGo</title>
+    <title>Área do Motoboy - KitchGo</title>
     <link rel="icon" type="image/png" href="favicon.png?v=1">
     <link rel="icon" href="favicon.ico?v=1" sizes="any">
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
@@ -78,14 +78,84 @@
         .motoboy-header h1 { margin: 0; font-size: 22px; }
         .motoboy-header .user-info { color: #666; font-size: 13px; }
 
+        /* ===== RESUMO ===== */
+        .motoboy-resumo {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+        .resumo-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 14px 10px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            border-left: 3px solid var(--primary-color, #C20000);
+        }
+        .resumo-card .resumo-valor {
+            font-size: 22px;
+            font-weight: 700;
+            display: block;
+            line-height: 1.2;
+        }
+        .resumo-card .resumo-label {
+            font-size: 11px;
+            color: #888;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        /* ===== ABAS ===== */
+        .motoboy-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #eee;
+        }
+        .motoboy-tab {
+            background: none;
+            border: none;
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #888;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s ease;
+        }
+        .motoboy-tab.active {
+            color: var(--primary-color, #C20000);
+            border-bottom-color: var(--primary-color, #C20000);
+        }
+        .motoboy-tab .tab-badge {
+            background: #eee;
+            color: #666;
+            font-size: 11px;
+            padding: 1px 7px;
+            border-radius: 999px;
+            margin-left: 6px;
+        }
+        .motoboy-tab.active .tab-badge {
+            background: var(--primary-color, #C20000);
+            color: #fff;
+        }
+
         .entrega-card {
             background: #fff;
             border: 1px solid #eee;
+            border-left: 4px solid #ccc;
             border-radius: 10px;
             padding: 16px 18px;
             margin-bottom: 14px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
+        .entrega-card.status-pendente { border-left-color: #999; }
+        .entrega-card.status-preparando { border-left-color: #F39C12; }
+        .entrega-card.status-saiu_entrega { border-left-color: #3498DB; }
+        .entrega-card.status-entregue { border-left-color: #27AE60; opacity: 0.9; }
         .entrega-card .entrega-header {
             display: flex;
             justify-content: space-between;
@@ -100,8 +170,16 @@
             font-weight: 600;
             background: #f1f1f1;
         }
+        .entrega-card.status-pendente .entrega-status { background: #ececec; color: #555; }
+        .entrega-card.status-preparando .entrega-status { background: #FDEBD0; color: #9C640C; }
+        .entrega-card.status-saiu_entrega .entrega-status { background: #D6EAF8; color: #1A5276; }
+        .entrega-card.status-entregue .entrega-status { background: #D4EDDA; color: #155724; }
         .entrega-card .entrega-detalhes { font-size: 14px; line-height: 1.6; color: #333; }
         .entrega-card .entrega-detalhes strong { color: #111; }
+        .entrega-card .entrega-valor {
+            font-weight: 700;
+            color: var(--primary-color, #C20000);
+        }
         .entrega-actions {
             margin-top: 12px;
             display: flex;
@@ -120,7 +198,7 @@
     <!-- TELA DE LOGIN -->
     <div class="login-screen" id="loginScreen">
         <div class="login-box">
-            <img src="logo.png?v=1" alt="ArretadoGo" class="login-logo">
+            <img src="logo.png?v=1" alt="KitchGo" class="login-logo">
             <p>Login de Motoboy</p>
             <form id="loginForm">
                 <div class="form-group">
@@ -140,15 +218,43 @@
     <!-- PAINEL DO MOTOBOY -->
     <div class="motoboy-page" id="motoboyPage" style="display:none;">
         <div class="motoboy-header">
-            <h1>🛵 Entregas em Rota</h1>
+            <h1>🛵 Painel do Motoboy</h1>
             <div style="display:flex; align-items:center; gap:12px;">
                 <span class="user-info" id="userInfo"></span>
                 <button class="btn-logout" id="logoutBtn">Sair</button>
             </div>
         </div>
 
+        <div class="motoboy-resumo">
+            <div class="resumo-card">
+                <span class="resumo-valor" id="resumoEmRota">—</span>
+                <span class="resumo-label">Em Rota Agora</span>
+            </div>
+            <div class="resumo-card">
+                <span class="resumo-valor" id="resumoHoje">—</span>
+                <span class="resumo-label">Entregas Hoje</span>
+            </div>
+            <div class="resumo-card">
+                <span class="resumo-valor" id="resumoTotal">—</span>
+                <span class="resumo-label">Total de Entregas</span>
+            </div>
+        </div>
+
+        <div class="motoboy-tabs">
+            <button type="button" class="motoboy-tab active" id="tabAberto" data-tab="aberto">
+                Em Aberto <span class="tab-badge" id="badgeAberto">0</span>
+            </button>
+            <button type="button" class="motoboy-tab" id="tabHistorico" data-tab="historico">
+                Histórico
+            </button>
+        </div>
+
         <div id="entregasList">
             <div class="empty-state">Carregando entregas... ⏳</div>
+        </div>
+
+        <div id="historicoList" style="display:none;">
+            <div class="empty-state">Carregando histórico... ⏳</div>
         </div>
     </div>
 

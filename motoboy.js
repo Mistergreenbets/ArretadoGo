@@ -2,6 +2,7 @@
 let pedidosTodos = [];
 let unsubscribePedidos = null;
 let motoboyLogado = null;
+let abaAtiva = 'aberto'; // 'aberto' | 'historico'
 
 // Só pedidos delivery, que ainda não terminaram, aparecem pro motoboy
 const STATUS_VISIVEIS_MOTOBOY = ['pendente', 'preparando', 'saiu_entrega'];
@@ -12,6 +13,7 @@ const watchersLocalizacao = new Map(); // pedidoId -> watchId do navigator.geolo
 // ========== INICIALIZAR ==========
 document.addEventListener('DOMContentLoaded', async () => {
     inicializarLoginForm();
+    inicializarAbas();
     await carregarNomeLoja();
     await verificarAutenticacaoMotoboy();
 });
@@ -103,16 +105,62 @@ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     }
 });
 
+// ========== ABAS (Em Aberto / Histórico) ==========
+function inicializarAbas() {
+    document.getElementById('tabAberto').addEventListener('click', () => mudarAba('aberto'));
+    document.getElementById('tabHistorico').addEventListener('click', () => mudarAba('historico'));
+}
+
+function mudarAba(aba) {
+    abaAtiva = aba;
+    document.getElementById('tabAberto').classList.toggle('active', aba === 'aberto');
+    document.getElementById('tabHistorico').classList.toggle('active', aba === 'historico');
+    document.getElementById('entregasList').style.display = aba === 'aberto' ? 'block' : 'none';
+    document.getElementById('historicoList').style.display = aba === 'historico' ? 'block' : 'none';
+    if (aba === 'historico') renderizarHistorico();
+}
+
 // ========== ENTREGAS EM TEMPO REAL ==========
 async function iniciarEscutaPedidos() {
     if (unsubscribePedidos) return; // já está escutando
 
     unsubscribePedidos = await observarTodosPedidos((pedidos) => {
         pedidosTodos = pedidos;
+        renderizarResumo();
         renderizarEntregas();
+        if (abaAtiva === 'historico') renderizarHistorico();
     });
 }
 
+// ========== RESUMO NO TOPO ==========
+function renderizarResumo() {
+    if (!motoboyLogado) return;
+
+    const minhas = pedidosTodos.filter(p => p.motoboyId === motoboyLogado.uid);
+
+    const emRota = minhas.filter(p => p.status === 'saiu_entrega').length;
+
+    const hoje = new Date();
+    const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const entreguesHoje = minhas.filter(p => {
+        if (p.status !== 'entregue') return false;
+        const data = paraData(p.entregueEm);
+        return data && data >= inicioHoje;
+    }).length;
+
+    const totalEntregues = minhas.filter(p => p.status === 'entregue').length;
+
+    document.getElementById('resumoEmRota').textContent = emRota;
+    document.getElementById('resumoHoje').textContent = entreguesHoje;
+    document.getElementById('resumoTotal').textContent = totalEntregues;
+}
+
+function paraData(timestamp) {
+    if (!timestamp) return null;
+    return typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
+}
+
+// ========== LISTA "EM ABERTO" ==========
 function renderizarEntregas() {
     const container = document.getElementById('entregasList');
 
@@ -120,6 +168,8 @@ function renderizarEntregas() {
         p.tipoEntrega === 'delivery' &&
         STATUS_VISIVEIS_MOTOBOY.includes(p.status || 'pendente')
     );
+
+    document.getElementById('badgeAberto').textContent = entregas.length;
 
     // Liga/desliga o GPS conforme cada pedido entra ou sai do status "saiu_entrega"
     sincronizarWatchersLocalizacao(entregas);
@@ -140,7 +190,7 @@ function renderizarEntregas() {
         }
 
         const card = document.createElement('div');
-        card.className = 'entrega-card';
+        card.className = `entrega-card status-${status}`;
         card.innerHTML = `
             <div class="entrega-header">
                 <span class="entrega-id">#${pedido.codigoPedido || pedido.id.substring(0, 8).toUpperCase()}</span>
@@ -152,8 +202,9 @@ function renderizarEntregas() {
                 ${pedido.bairro ? `<strong>Bairro:</strong> ${pedido.bairro}<br>` : ''}
                 ${pedido.endereco ? `<strong>Endereço:</strong> ${pedido.endereco}<br>` : ''}
                 <strong>Itens:</strong> ${itensHtml}<br>
-                <strong>Total:</strong> R$ ${pedido.total?.toFixed(2) || '0.00'}
+                <strong>Total:</strong> <span class="entrega-valor">${formatarMoeda(pedido.total)}</span>
                 ${pedido.observacoes ? `<br><strong>Obs:</strong> ${pedido.observacoes}` : ''}
+                ${pedido.motoboyNome && status === 'saiu_entrega' ? `<br><strong>Com:</strong> ${pedido.motoboyNome}` : ''}
             </div>
             <div class="entrega-actions" id="acoes-${pedido.id}"></div>
         `;
@@ -180,6 +231,63 @@ function renderizarEntregas() {
     });
 }
 
+// ========== LISTA "HISTÓRICO" ==========
+// Mostra as entregas que ESTE motoboy já concluiu, agrupadas por dia (mais recente primeiro).
+function renderizarHistorico() {
+    const container = document.getElementById('historicoList');
+    if (!motoboyLogado) return;
+
+    const entregues = pedidosTodos
+        .filter(p => p.status === 'entregue' && p.motoboyId === motoboyLogado.uid)
+        .sort((a, b) => (paraData(b.entregueEm) || 0) - (paraData(a.entregueEm) || 0));
+
+    if (entregues.length === 0) {
+        container.innerHTML = '<div class="empty-state">Você ainda não concluiu nenhuma entrega.</div>';
+        return;
+    }
+
+    // Agrupa por dia (formato "6 de agosto de 2026") pra ficar mais fácil de ler
+    const grupos = new Map();
+    entregues.forEach(pedido => {
+        const data = paraData(pedido.entregueEm);
+        const chave = data ? data.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Data desconhecida';
+        if (!grupos.has(chave)) grupos.set(chave, []);
+        grupos.get(chave).push(pedido);
+    });
+
+    let html = '';
+    grupos.forEach((pedidosDoDia, chaveData) => {
+        const totalDoDia = pedidosDoDia.reduce((soma, p) => soma + (p.total || 0), 0);
+        html += `
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin: 18px 0 8px;">
+                <span style="font-size:13px; font-weight:700; color:#888; text-transform:uppercase;">${chaveData}</span>
+                <span style="font-size:12px; color:#888;">${pedidosDoDia.length} entrega(s) · ${formatarMoeda(totalDoDia)}</span>
+            </div>
+        `;
+
+        pedidosDoDia.forEach(pedido => {
+            const hora = paraData(pedido.entregueEm);
+            const horaTexto = hora ? hora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+            html += `
+                <div class="entrega-card status-entregue">
+                    <div class="entrega-header">
+                        <span class="entrega-id">#${pedido.codigoPedido || pedido.id.substring(0, 8).toUpperCase()}</span>
+                        <span class="entrega-status">✅ Entregue às ${horaTexto}</span>
+                    </div>
+                    <div class="entrega-detalhes">
+                        <strong>Cliente:</strong> ${pedido.nome}<br>
+                        ${pedido.bairro ? `<strong>Bairro:</strong> ${pedido.bairro}<br>` : ''}
+                        <strong>Total:</strong> <span class="entrega-valor">${formatarMoeda(pedido.total)}</span>
+                    </div>
+                </div>
+            `;
+        });
+    });
+
+    container.innerHTML = html;
+}
+
 // Motoboy só pode mover pra 'saiu_entrega' ou 'entregue' — reforçado aqui e nas regras do Firestore
 async function marcarStatus(pedido, novoStatus) {
     if (!['saiu_entrega', 'entregue'].includes(novoStatus)) return;
@@ -188,7 +296,12 @@ async function marcarStatus(pedido, novoStatus) {
     const abaWhatsApp = window.open('', '_blank');
 
     try {
-        await updatePedidoStatus(pedido.id, novoStatus);
+        // Ao pegar a entrega, registra qual motoboy é — usado no resumo e no histórico
+        const extra = novoStatus === 'saiu_entrega'
+            ? { motoboyId: motoboyLogado.uid, motoboyNome: motoboyLogado.nome }
+            : undefined;
+
+        await updatePedidoStatus(pedido.id, novoStatus, extra);
         enviarAtualizacaoWhatsApp({ ...pedido, status: novoStatus }, novoStatus, abaWhatsApp);
         showToast('Status atualizado!', 'success');
         // A lista se atualiza sozinha via onSnapshot

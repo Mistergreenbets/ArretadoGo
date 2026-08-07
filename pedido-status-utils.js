@@ -13,6 +13,11 @@ const STATUS_PEDIDO = [
 // (admin.js ou motoboy.js) deve atualizar essa variável.
 let nomeLojaAtual = 'Kitechiyo';
 
+// Formata número pra "R$ 12,50" — usado pelo dashboard do admin e do motoboy
+function formatarMoeda(valor) {
+    return `R$ ${Number(valor || 0).toFixed(2).replace('.', ',')}`;
+}
+
 // Deixa só números (usado para montar o link do WhatsApp)
 function apenasNumeros(str) {
     return (str || '').toString().replace(/\D/g, '');

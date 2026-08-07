@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Acompanhar Pedido - ArretadoGo</title>
-    <link rel="icon" type="image/png" href="logo.png?v=1">
+    <link rel="icon" type="image/png" href="favicon.png?v=1">
+    <link rel="icon" href="favicon.ico?v=1" sizes="any">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
@@ -119,19 +121,40 @@
             text-align: center;
         }
 
-        .rastreio-itens {
-            margin-top: 16px;
+        /* ---- Previsão de entrega/retirada ---- */
+        .previsao-box {
+            background: var(--light-bg, #F5F5F5);
+            border-radius: 10px;
+            padding: 12px 16px;
             font-size: 14px;
-            color: #444;
-            line-height: 1.7;
+            font-weight: 600;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            margin: 18px 0;
         }
 
-        .rastreio-total {
-            margin-top: 10px;
-            font-weight: 700;
-            font-size: 16px;
+        .previsao-box:empty {
+            display: none;
+            margin: 0;
         }
 
+        .previsao-box.previsao-concluida {
+            background: #D4EDDA;
+            color: #155724;
+        }
+
+        .previsao-hora {
+            font-size: 12px;
+            font-weight: 500;
+            color: #888;
+        }
+
+        .previsao-concluida .previsao-hora {
+            display: none;
+        }
+
+        /* ---- Mapa do motoboy ---- */
         #mapaMotoboy {
             width: 100%;
             height: 260px;
@@ -139,9 +162,91 @@
             margin-top: 8px;
         }
 
-        .notif-btn {
-            width: 100%;
-            margin-top: 4px;
+        .mapa-legenda {
+            font-size: 12px;
+            color: #999;
+            margin-top: 6px;
+        }
+
+        /* ---- Detalhes do pedido (itens, endereço, observações, total) ---- */
+        .rastreio-secao {
+            border-top: 1px solid #eee;
+            padding-top: 16px;
+            margin-top: 16px;
+        }
+
+        .rastreio-secao-titulo {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            color: #999;
+            margin-bottom: 10px;
+        }
+
+        .rastreio-itens-lista {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .rastreio-item-linha {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .rastreio-item-qtd {
+            font-weight: 700;
+            color: var(--primary-color, #C20000);
+            flex-shrink: 0;
+        }
+
+        .rastreio-item-nome {
+            flex: 1;
+            font-weight: 600;
+            color: #222;
+        }
+
+        .rastreio-item-preco {
+            color: #888;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+
+        .rastreio-item-extras {
+            font-size: 12px;
+            color: #888;
+            margin-top: 3px;
+            margin-left: 28px;
+        }
+
+        .rastreio-endereco,
+        .rastreio-obs {
+            font-size: 14px;
+            line-height: 1.5;
+            color: #333;
+        }
+
+        .rastreio-vazio {
+            font-size: 13px;
+            color: #999;
+        }
+
+        .rastreio-total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 2px solid #eee;
+            margin-top: 18px;
+            padding-top: 14px;
+            font-size: 16px;
+        }
+
+        .rastreio-total-row strong {
+            font-size: 20px;
+            color: var(--primary-color, #C20000);
         }
 
         .erro-box {
