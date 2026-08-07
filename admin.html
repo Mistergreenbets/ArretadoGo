@@ -935,7 +935,11 @@
     <div class="toast" id="toast"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <!-- SheetJS: usado só pra LER planilhas na importação de cardápio -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- ExcelJS: usado pra GERAR o relatório com formatação de verdade (cor, borda, negrito) —
+         o SheetJS acima não escreve estilo em .xlsx na versão gratuita. -->
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="pedido-status-utils.js"></script>
     <script src="admin.js"></script>

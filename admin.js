@@ -1570,93 +1570,336 @@ function intervaloRelatorio(periodo, inicioHoje) {
     return { inicio, fim, label: 'Mês atual' };
 }
 
-function exportarRelatorio(periodo) {
-    if (typeof XLSX === 'undefined') {
+// ========== RELATÓRIO EM XLSX (visual profissional via ExcelJS) ==========
+// Paleta da marca, reaproveitada em toda a planilha
+const RELATORIO_COR = {
+    primaria: 'FFC20000',
+    primariaEscura: 'FF970000',
+    secundaria: 'FF2B0000',
+    sucesso: 'FF27AE60',
+    perigo: 'FFE74C3C',
+    alerta: 'FFF39C12',
+    fundoClaro: 'FFF7F7F7',
+    fundoZebra: 'FFFAFAFA',
+    branco: 'FFFFFFFF',
+    textoEscuro: 'FF1A1A1A',
+    textoClaro: 'FF888888',
+    borda: 'FFE0E0E0'
+};
+
+const RELATORIO_STATUS_LABELS = {
+    pendente: 'Pendente', preparando: 'Preparando', saiu_entrega: 'Saiu para Entrega',
+    entregue: 'Entregue', cancelado: 'Cancelado'
+};
+
+function relatorioFormatarIntervalo(inicio, fimExclusivo) {
+    const fimInclusive = new Date(fimExclusivo.getTime() - 1);
+    const opts = { day: '2-digit', month: '2-digit', year: 'numeric' };
+    const i = inicio.toLocaleDateString('pt-BR', opts);
+    const f = fimInclusive.toLocaleDateString('pt-BR', opts);
+    return i === f ? i : `${i} a ${f}`;
+}
+
+function relatorioFormatarTelefone(tel) {
+    const n = (tel || '').toString().replace(/\D/g, '');
+    if (n.length === 11) return `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}`;
+    if (n.length === 10) return `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}`;
+    return tel || '';
+}
+
+// Título de seção na aba Resumo (barra escura, texto branco) — retorna a próxima linha livre
+function relatorioTituloSecao(ws, linha, texto) {
+    ws.mergeCells(`B${linha}:C${linha}`);
+    const cell = ws.getCell(`B${linha}`);
+    cell.value = texto;
+    cell.font = { bold: true, size: 11, color: { argb: RELATORIO_COR.branco } };
+    cell.alignment = { vertical: 'middle', indent: 1 };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RELATORIO_COR.secundaria } };
+    ws.getRow(linha).height = 22;
+    return linha + 1;
+}
+
+// Lista de [label, valor, corDoValor?, formato?, destaque?] como tabela label/valor com zebra
+function relatorioTabelaKV(ws, linhaInicial, itens) {
+    let linha = linhaInicial;
+    itens.forEach(([label, valor, cor, formato, destaque], i) => {
+        const rowLabel = ws.getCell(`B${linha}`);
+        const rowValor = ws.getCell(`C${linha}`);
+
+        rowLabel.value = label;
+        rowLabel.font = { size: 10, bold: !!destaque, color: { argb: RELATORIO_COR.textoEscuro } };
+        rowValor.value = valor;
+        rowValor.font = { size: destaque ? 12 : 10, bold: true, color: { argb: cor || RELATORIO_COR.textoEscuro } };
+        rowValor.alignment = { horizontal: 'right' };
+
+        if (formato === 'moeda') rowValor.numFmt = '"R$" #,##0.00';
+        else if (formato) rowValor.numFmt = formato;
+
+        const fundo = i % 2 === 0 ? RELATORIO_COR.fundoClaro : RELATORIO_COR.branco;
+        [rowLabel, rowValor].forEach(c => {
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fundo } };
+            c.border = { bottom: { style: 'hair', color: { argb: RELATORIO_COR.borda } } };
+        });
+
+        linha += 1;
+    });
+    return linha;
+}
+
+// Cabeçalho de tabela (abas Pedidos/Produtos): fundo vermelho, texto branco, linha congelada
+function relatorioCabecalhoTabela(ws, colunas) {
+    ws.columns = colunas;
+    const headerRow = ws.getRow(1);
+    headerRow.height = 24;
+    colunas.forEach((c, i) => {
+        const cell = headerRow.getCell(i + 1);
+        cell.value = c.header;
+        cell.font = { bold: true, color: { argb: RELATORIO_COR.branco }, size: 10 };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RELATORIO_COR.primaria } };
+        cell.alignment = { vertical: 'middle', horizontal: i === 0 ? 'center' : 'left' };
+        cell.border = { bottom: { style: 'thin', color: { argb: RELATORIO_COR.primariaEscura } } };
+    });
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    ws.pageSetup = { fitToPage: true, fitToWidth: 1, fitToHeight: 0, orientation: 'landscape' };
+}
+
+// Zebra + bordas finas pra cada linha de dado
+function relatorioEstilizarLinha(row, indice) {
+    const fundo = indice % 2 === 0 ? RELATORIO_COR.fundoZebra : RELATORIO_COR.branco;
+    row.eachCell({ includeEmpty: true }, cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fundo } };
+        cell.font = { size: 10, color: { argb: RELATORIO_COR.textoEscuro } };
+        cell.border = { bottom: { style: 'hair', color: { argb: RELATORIO_COR.borda } } };
+        cell.alignment = { vertical: 'middle' };
+    });
+}
+
+function relatorioColorirStatus(cell, status) {
+    const cores = {
+        entregue: RELATORIO_COR.sucesso, cancelado: RELATORIO_COR.perigo,
+        pendente: RELATORIO_COR.alerta, preparando: RELATORIO_COR.alerta, saiu_entrega: 'FF3498DB'
+    };
+    cell.font = Object.assign({}, cell.font, { bold: true, color: { argb: cores[status] || RELATORIO_COR.textoEscuro } });
+}
+
+// Autofiltro (ou aviso de "sem registros")
+function relatorioFinalizarTabela(ws, numColunas, numLinhas) {
+    if (numLinhas === 0) {
+        ws.mergeCells(2, 1, 2, numColunas);
+        const cell = ws.getCell(2, 1);
+        cell.value = 'Nenhum registro nesse período.';
+        cell.font = { italic: true, color: { argb: RELATORIO_COR.textoClaro } };
+        cell.alignment = { horizontal: 'center' };
+        return;
+    }
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: numLinhas + 1, column: numColunas } };
+}
+
+async function exportarRelatorio(periodo) {
+    if (typeof ExcelJS === 'undefined') {
         showToast('Biblioteca de planilha não carregou — confira sua conexão e tente de novo', 'error');
         return;
     }
 
-    const paraData = (timestamp) => {
-        if (!timestamp) return null;
-        return typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
-    };
+    const btn = document.querySelector(`.relatorio-periodo-btn[data-periodo="${periodo}"]`);
+    const textoOriginalBtn = btn?.textContent;
+    if (btn) { btn.disabled = true; btn.textContent = 'Gerando...'; }
 
-    const agora = new Date();
-    const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-    const { inicio, fim, label } = intervaloRelatorio(periodo, inicioHoje);
+    try {
+        const paraData = (timestamp) => {
+            if (!timestamp) return null;
+            return typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
+        };
 
-    const pedidosNoPeriodo = pedidosAdmin.filter(p => {
-        const d = paraData(p.criadoEm);
-        return d && d >= inicio && d < fim;
-    });
-    const entreguesNoPeriodo = pedidosNoPeriodo.filter(p => p.status === 'entregue');
-    const canceladosNoPeriodo = pedidosNoPeriodo.filter(p => p.status === 'cancelado');
+        const agora = new Date();
+        const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+        const { inicio, fim, label } = intervaloRelatorio(periodo, inicioHoje);
 
-    const produtoPorId = new Map(produtosAdmin.map(p => [p.id, p]));
-    let faturamento = 0, custo = 0;
-    entreguesNoPeriodo.forEach(p => {
-        faturamento += (p.total || 0);
-        (p.itens || []).forEach(item => {
-            const produto = produtoPorId.get(item.id);
-            if (produto && typeof produto.custo === 'number') custo += produto.custo * (item.quantidade || 0);
+        const pedidosNoPeriodo = pedidosAdmin
+            .filter(p => {
+                const d = paraData(p.criadoEm);
+                return d && d >= inicio && d < fim;
+            })
+            .sort((a, b) => (paraData(b.criadoEm) || 0) - (paraData(a.criadoEm) || 0));
+
+        const entreguesNoPeriodo = pedidosNoPeriodo.filter(p => p.status === 'entregue');
+        const canceladosNoPeriodo = pedidosNoPeriodo.filter(p => p.status === 'cancelado');
+
+        const produtoPorId = new Map(produtosAdmin.map(p => [p.id, p]));
+        let faturamento = 0, custo = 0;
+        entreguesNoPeriodo.forEach(p => {
+            faturamento += (p.total || 0);
+            (p.itens || []).forEach(item => {
+                const produto = produtoPorId.get(item.id);
+                if (produto && typeof produto.custo === 'number') custo += produto.custo * (item.quantidade || 0);
+            });
         });
-    });
-    const lucro = faturamento - custo;
+        const lucro = faturamento - custo;
+        const margem = faturamento > 0 ? lucro / faturamento : 0;
+        const ticketMedio = entreguesNoPeriodo.length ? faturamento / entreguesNoPeriodo.length : 0;
+        const taxaConclusao = pedidosNoPeriodo.length ? entreguesNoPeriodo.length / pedidosNoPeriodo.length : 0;
 
-    // ---- Aba Resumo ----
-    const resumo = [
-        ['Relatório', label],
-        ['Gerado em', agora.toLocaleString('pt-BR')],
-        [],
-        ['Pedidos recebidos', pedidosNoPeriodo.length],
-        ['Pedidos entregues', entreguesNoPeriodo.length],
-        ['Pedidos cancelados', canceladosNoPeriodo.length],
-        ['Faturamento', faturamento],
-        ['Custo (produtos com custo cadastrado)', custo],
-        ['Lucro líquido (estimado)', lucro],
-        ['Ticket médio', entreguesNoPeriodo.length ? faturamento / entreguesNoPeriodo.length : 0]
-    ];
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = nomeLojaAtual || 'ArretadoGo';
+        workbook.created = agora;
 
-    // ---- Aba Pedidos ----
-    const pedidosSheet = [
-        ['Código', 'Cliente', 'Telefone', 'Tipo', 'Status', 'Total', 'Criado em', 'Entregue em']
-    ];
-    pedidosNoPeriodo.forEach(p => {
-        pedidosSheet.push([
-            p.codigoPedido || p.id,
-            p.nome || '',
-            p.telefone || '',
-            p.tipoEntrega === 'delivery' ? 'Delivery' : 'Retirada',
-            p.status || 'pendente',
-            p.total || 0,
-            paraData(p.criadoEm)?.toLocaleString('pt-BR') || '',
-            paraData(p.entregueEm)?.toLocaleString('pt-BR') || ''
+        // ===================== ABA RESUMO =====================
+        const wsResumo = workbook.addWorksheet('Resumo', {
+            properties: { tabColor: { argb: RELATORIO_COR.primaria } },
+            views: [{ showGridLines: false }]
+        });
+        wsResumo.columns = [{ width: 4 }, { width: 34 }, { width: 20 }, { width: 4 }];
+
+        wsResumo.mergeCells('B2:C2');
+        const bannerLoja = wsResumo.getCell('B2');
+        bannerLoja.value = nomeLojaAtual || 'ArretadoGo';
+        bannerLoja.font = { name: 'Calibri', size: 22, bold: true, color: { argb: RELATORIO_COR.branco } };
+        bannerLoja.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+        wsResumo.getRow(2).height = 40;
+        ['A', 'B', 'C', 'D'].forEach(col => {
+            wsResumo.getCell(`${col}2`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RELATORIO_COR.secundaria } };
+        });
+
+        wsResumo.mergeCells('B3:C3');
+        const bannerSub = wsResumo.getCell('B3');
+        bannerSub.value = `Relatório ${label}  ·  ${relatorioFormatarIntervalo(inicio, fim)}`;
+        bannerSub.font = { size: 11, italic: true, color: { argb: RELATORIO_COR.branco } };
+        bannerSub.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+        wsResumo.getRow(3).height = 22;
+        ['A', 'B', 'C', 'D'].forEach(col => {
+            wsResumo.getCell(`${col}3`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RELATORIO_COR.primaria } };
+        });
+
+        wsResumo.getCell('B5').value = `Gerado em ${agora.toLocaleString('pt-BR')}`;
+        wsResumo.getCell('B5').font = { size: 9, italic: true, color: { argb: RELATORIO_COR.textoClaro } };
+
+        let linha = 7;
+        linha = relatorioTituloSecao(wsResumo, linha, '📊  INDICADORES DO PERÍODO');
+        linha = relatorioTabelaKV(wsResumo, linha, [
+            ['Pedidos recebidos', pedidosNoPeriodo.length, null],
+            ['Pedidos entregues', entreguesNoPeriodo.length, RELATORIO_COR.sucesso],
+            ['Pedidos cancelados', canceladosNoPeriodo.length, canceladosNoPeriodo.length > 0 ? RELATORIO_COR.perigo : null],
+            ['Taxa de conclusão', taxaConclusao, null, '0.0%']
         ]);
-    });
 
-    // ---- Aba Produtos vendidos ----
-    const vendasPorProduto = new Map();
-    entreguesNoPeriodo.forEach(p => {
-        (p.itens || []).forEach(item => {
-            const atual = vendasPorProduto.get(item.id) || { nome: item.nome, quantidade: 0, total: 0 };
-            atual.quantidade += item.quantidade || 0;
-            atual.total += (item.preco || 0) * (item.quantidade || 0);
-            vendasPorProduto.set(item.id, atual);
+        linha += 1;
+        linha = relatorioTituloSecao(wsResumo, linha, '💰  FINANCEIRO');
+        linha = relatorioTabelaKV(wsResumo, linha, [
+            ['Faturamento', faturamento, RELATORIO_COR.sucesso, 'moeda'],
+            ['Custo (produtos c/ custo cadastrado)', custo, RELATORIO_COR.textoClaro, 'moeda'],
+            ['Lucro líquido (estimado)', lucro, lucro >= 0 ? RELATORIO_COR.sucesso : RELATORIO_COR.perigo, 'moeda', true],
+            ['Margem de lucro', margem, null, '0.0%'],
+            ['Ticket médio', ticketMedio, null, 'moeda']
+        ]);
+
+        wsResumo.mergeCells(`B${linha + 1}:C${linha + 1}`);
+        const notaCusto = wsResumo.getCell(`B${linha + 1}`);
+        notaCusto.value = 'Custo considera só produtos com "custo" cadastrado no admin — os demais entram como R$ 0,00.';
+        notaCusto.font = { size: 8, italic: true, color: { argb: RELATORIO_COR.textoClaro } };
+
+        // ===================== ABA PEDIDOS =====================
+        const wsPedidos = workbook.addWorksheet('Pedidos', { properties: { tabColor: { argb: RELATORIO_COR.primaria } } });
+        const colunasPedidos = [
+            { header: 'Código', key: 'codigo', width: 14 },
+            { header: 'Cliente', key: 'cliente', width: 24 },
+            { header: 'Telefone', key: 'telefone', width: 17 },
+            { header: 'Tipo', key: 'tipo', width: 12 },
+            { header: 'Status', key: 'status', width: 16 },
+            { header: 'Total', key: 'total', width: 14 },
+            { header: 'Criado em', key: 'criadoEm', width: 19 },
+            { header: 'Entregue em', key: 'entregueEm', width: 19 }
+        ];
+        relatorioCabecalhoTabela(wsPedidos, colunasPedidos);
+
+        pedidosNoPeriodo.forEach((p, i) => {
+            const row = wsPedidos.addRow({
+                codigo: p.codigoPedido || p.id,
+                cliente: p.nome || '',
+                telefone: relatorioFormatarTelefone(p.telefone),
+                tipo: p.tipoEntrega === 'delivery' ? 'Delivery' : 'Retirada',
+                status: RELATORIO_STATUS_LABELS[p.status] || 'Pendente',
+                total: p.total || 0,
+                criadoEm: paraData(p.criadoEm),
+                entregueEm: paraData(p.entregueEm)
+            });
+            relatorioEstilizarLinha(row, i);
+            row.getCell('total').numFmt = '"R$" #,##0.00';
+            row.getCell('criadoEm').numFmt = 'dd/mm/yyyy hh:mm';
+            row.getCell('entregueEm').numFmt = 'dd/mm/yyyy hh:mm';
+            relatorioColorirStatus(row.getCell('status'), p.status);
         });
-    });
-    const produtosSheet = [['Produto', 'Quantidade Vendida', 'Faturamento Gerado']];
-    [...vendasPorProduto.values()]
-        .sort((a, b) => b.quantidade - a.quantidade)
-        .forEach(v => produtosSheet.push([v.nome, v.quantidade, v.total]));
+        relatorioFinalizarTabela(wsPedidos, colunasPedidos.length, pedidosNoPeriodo.length);
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumo), 'Resumo');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pedidosSheet), 'Pedidos');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(produtosSheet), 'Produtos');
+        // ===================== ABA PRODUTOS =====================
+        const vendasPorProduto = new Map();
+        entreguesNoPeriodo.forEach(p => {
+            (p.itens || []).forEach(item => {
+                const atual = vendasPorProduto.get(item.id) || { nome: item.nome, quantidade: 0, total: 0 };
+                atual.quantidade += item.quantidade || 0;
+                atual.total += (item.preco || 0) * (item.quantidade || 0);
+                vendasPorProduto.set(item.id, atual);
+            });
+        });
+        const rankingProdutos = [...vendasPorProduto.values()].sort((a, b) => b.total - a.total);
+        const faturamentoProdutos = rankingProdutos.reduce((s, v) => s + v.total, 0);
 
-    const nomeArquivo = `relatorio-${periodo}-${inicioHoje.toISOString().slice(0, 10)}.xlsx`;
-    XLSX.writeFile(wb, nomeArquivo);
-    showToast('Relatório baixado!', 'success');
+        const wsProdutos = workbook.addWorksheet('Produtos', { properties: { tabColor: { argb: RELATORIO_COR.primaria } } });
+        const colunasProdutos = [
+            { header: '#', key: 'pos', width: 6 },
+            { header: 'Produto', key: 'nome', width: 30 },
+            { header: 'Qtd. Vendida', key: 'quantidade', width: 14 },
+            { header: 'Faturamento', key: 'faturamento', width: 16 },
+            { header: '% do Total', key: 'percentual', width: 12 }
+        ];
+        relatorioCabecalhoTabela(wsProdutos, colunasProdutos);
+
+        rankingProdutos.forEach((v, i) => {
+            const medalha = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : String(i + 1);
+            const row = wsProdutos.addRow({
+                pos: medalha,
+                nome: v.nome,
+                quantidade: v.quantidade,
+                faturamento: v.total,
+                percentual: faturamentoProdutos > 0 ? v.total / faturamentoProdutos : 0
+            });
+            relatorioEstilizarLinha(row, i);
+            row.getCell('faturamento').numFmt = '"R$" #,##0.00';
+            row.getCell('percentual').numFmt = '0.0%';
+            row.getCell('pos').alignment = { horizontal: 'center' };
+        });
+        relatorioFinalizarTabela(wsProdutos, colunasProdutos.length, rankingProdutos.length);
+
+        if (rankingProdutos.length > 0) {
+            wsProdutos.addConditionalFormatting({
+                ref: `C2:C${rankingProdutos.length + 1}`,
+                rules: [{
+                    type: 'dataBar',
+                    cfvo: [{ type: 'min' }, { type: 'max' }],
+                    color: { argb: RELATORIO_COR.primaria },
+                    priority: 1
+                }]
+            });
+        }
+
+        // ===== GERAR E BAIXAR =====
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `relatorio-${periodo}-${inicioHoje.toISOString().slice(0, 10)}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        showToast('Relatório baixado!', 'success');
+    } catch (error) {
+        console.error('Erro ao gerar relatório:', error);
+        showToast('Erro ao gerar relatório', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = textoOriginalBtn; }
+    }
 }
 
 
