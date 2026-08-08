@@ -13,6 +13,7 @@ let configLoja = {
     adicionaisSanduiche: [],
     bairrosEntrega: [],
     promocoes: [],
+    horarioFuncionamento: null,
     hero: {
         prefixo: 'Aproveite Sua',
         destaque: 'Comida Deliciosa',
@@ -91,6 +92,7 @@ async function carregarConfigurações() {
                 adicionaisSanduiche: Array.isArray(config.adicionaisSanduiche) ? config.adicionaisSanduiche : [],
                 bairrosEntrega: Array.isArray(config.bairrosEntrega) ? config.bairrosEntrega : [],
                 promocoes: Array.isArray(config.promocoes) ? config.promocoes : [],
+                horarioFuncionamento: config.horarioFuncionamento || null,
                 hero: {
                     prefixo: config.hero?.prefixo || configLoja.hero.prefixo,
                     destaque: config.hero?.destaque || configLoja.hero.destaque,
@@ -115,6 +117,12 @@ async function carregarConfigurações() {
 
         renderizarHero();
         renderizarOpcoesBairro();
+        atualizarStatusLoja();
+
+        // Reavalia a cada minuto (pra loja abrir/fechar sozinha sem precisar recarregar a página)
+        if (!statusLojaIntervalId) {
+            statusLojaIntervalId = setInterval(atualizarStatusLoja, 60 * 1000);
+        }
 
         // Salva a Hero em cache local pra próxima visita aparecer instantaneamente,
         // sem precisar esperar o Firestore de novo (ver script inline no início do <body>).
@@ -131,6 +139,37 @@ async function carregarConfigurações() {
         // valores padrão já preenchidos em configLoja, em vez de ficar escondida pra sempre.
         revelarHero();
     }
+}
+
+// ========== STATUS DA LOJA (ABERTA/FECHADA) ==========
+let statusLojaIntervalId = null;
+let lojaAbertaAtual = true; // usado pra bloquear o checkout quando a loja estiver fechada
+
+function atualizarStatusLoja() {
+    const status = calcularStatusLoja(configLoja);
+    lojaAbertaAtual = status.aberta;
+
+    const banner = document.getElementById('storeStatusBanner');
+    const heroSection = document.getElementById('heroSection');
+    if (!banner) return;
+
+    if (!status.controlado || status.aberta) {
+        banner.style.display = 'none';
+        banner.textContent = '';
+        // Banner escondido: a Hero volta a ser o primeiro elemento da página, então ela
+        // mesma precisa compensar o header fixo.
+        heroSection?.classList.add('hero-topo');
+        return;
+    }
+
+    const proxima = status.proximaAbertura
+        ? ` Abrimos ${status.proximaAbertura.label} às ${status.proximaAbertura.hora}.`
+        : '';
+    banner.textContent = `🔴 Estamos fechados no momento.${proxima}`;
+    banner.style.display = 'block';
+    // Banner visível: ele já compensa o header. Se a Hero também compensasse, o espaço
+    // dobraria — por isso tira a margem extra da Hero enquanto o banner estiver na tela.
+    heroSection?.classList.remove('hero-topo');
 }
 
 function revelarHero() {
@@ -216,6 +255,17 @@ function formatarTelefoneExibicao(telefone) {
         return `${ddd} ${resto.slice(0, 5)}-${resto.slice(5)}`;
     }
     return `${ddd} ${resto.slice(0, 4)}-${resto.slice(4)}`;
+}
+
+// Texto amigável da forma de pagamento (usado na mensagem do WhatsApp)
+function formatarFormaPagamento(metodo) {
+    const labels = {
+        pix: '📱 Pix',
+        credito: '💳 Cartão de Crédito',
+        debito: '💳 Cartão de Débito',
+        dinheiro: '💵 Dinheiro'
+    };
+    return labels[metodo] || 'Não informado';
 }
 
 // ========== BANNER ROTATIVO DE PROMOÇÕES ==========
@@ -314,16 +364,24 @@ document.getElementById('promoCarousel')?.addEventListener('mouseleave', () => {
     }
 });
 
+// ========== ÍCONES DE CATEGORIA (SVG de linha, herdam a cor do texto via currentColor) ==========
+const ICONES_CATEGORIA = {
+    'todos': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`,
+    'burgers': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9c0-3.3 3.6-6 8-6s8 2.7 8 6"/><line x1="3" y1="11" x2="21" y2="11"/><line x1="3" y1="14" x2="21" y2="14"/><path d="M3 17h18c0 2.2-1.8 4-4 4H7c-2.2 0-4-1.8-4-4z"/></svg>`,
+    'pizza': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 20h18z"/><circle cx="11" cy="10.5" r="1"/><circle cx="14.5" cy="14" r="1"/><circle cx="9.5" cy="14.5" r="1"/></svg>`,
+    'bebidas': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1.4 11.2a2 2 0 0 1-2 1.8H8.4a2 2 0 0 1-2-1.8z"/><line x1="5" y1="8" x2="19" y2="8"/><line x1="15" y1="4" x2="13" y2="8"/></svg>`,
+    'acompanhamentos': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10h14l-1.3 10.2a1.8 1.8 0 0 1-1.8 1.8H8.1a1.8 1.8 0 0 1-1.8-1.8z"/><line x1="9" y1="10" x2="8.5" y2="4"/><line x1="12" y1="10" x2="12" y2="3.5"/><line x1="15" y1="10" x2="15.5" y2="4"/></svg>`,
+    'sobremesas': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M4 20 6 10h12l2 10z"/><path d="M6.5 10 9 20"/><path d="M17.5 10 15 20"/><circle cx="12" cy="6.5" r="1.6"/><line x1="12" y1="8" x2="12" y2="10"/></svg>`,
+    'outros': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="1.5"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`
+};
+
+function getIconeCategoria(cat) {
+    return ICONES_CATEGORIA[cat] || ICONES_CATEGORIA['outros'];
+}
+
 // ========== RENDERIZAR CATEGORIAS ==========
 function renderizarCategorias() {
     const categorias = ['burgers', 'pizza', 'bebidas', 'acompanhamentos', 'sobremesas'];
-    const icones = {
-        'burgers': '🍔',
-        'pizza': '🍕',
-        'bebidas': '🥤',
-        'acompanhamentos': '🍟',
-        'sobremesas': '🍰'
-    };
 
     const container = document.getElementById('categoriesContainer');
     container.innerHTML = '';
@@ -333,7 +391,7 @@ function renderizarCategorias() {
     cardTodos.className = 'category-card' + (filtroAtivo === 'todos' ? ' active' : '');
     cardTodos.dataset.category = 'todos';
     cardTodos.innerHTML = `
-        <div class="category-icon">🍽️</div>
+        <div class="category-icon">${getIconeCategoria('todos')}</div>
         <div class="category-name">Todos</div>
         <small>${allProdutos.length} produtos</small>
     `;
@@ -347,7 +405,7 @@ function renderizarCategorias() {
             card.className = 'category-card' + (filtroAtivo === cat ? ' active' : '');
             card.dataset.category = cat;
             card.innerHTML = `
-                <div class="category-icon">${icones[cat] || '📦'}</div>
+                <div class="category-icon">${getIconeCategoria(cat)}</div>
                 <div class="category-name">${capitalize(cat)}</div>
                 <small>${count} produtos</small>
             `;
@@ -370,6 +428,7 @@ function renderizarFiltros() {
 
     const btnTodos = document.querySelector('.filter-btn[data-filter="todos"]');
     if (btnTodos) {
+        btnTodos.innerHTML = `<span class="filter-btn-icon">${getIconeCategoria('todos')}</span> Todos`;
         btnTodos.addEventListener('click', () => aplicarFiltroBotao('todos'));
     }
 
@@ -382,7 +441,7 @@ function renderizarFiltros() {
             const btn = document.createElement('button');
             btn.className = 'filter-btn';
             btn.dataset.filter = cat;
-            btn.textContent = nomesFiltro[cat] || capitalize(cat);
+            btn.innerHTML = `<span class="filter-btn-icon">${getIconeCategoria(cat)}</span> ${nomesFiltro[cat] || capitalize(cat)}`;
             btn.addEventListener('click', () => aplicarFiltroBotao(cat));
             container.appendChild(btn);
         }
@@ -413,17 +472,105 @@ function quantidadeNoCarrinho(produtoId) {
         .reduce((total, item) => total + item.quantidade, 0);
 }
 
+// Monta o elemento DOM de um único card de produto (reutilizado tanto na grade
+// única quanto nas grades agrupadas por categoria).
+function criarCardProdutoEl(produto) {
+    const card = document.createElement('div');
+    const esgotado = estaEsgotado(produto);
+    card.className = 'product-card' + (esgotado ? ' esgotado' : '');
+    card.innerHTML = `
+        <div style="position: relative;">
+            <img src="${produto.imagem}" alt="${produto.nome}" class="product-image">
+            ${esgotado
+                ? '<div class="product-badge badge-esgotado">Esgotado</div>'
+                : (produto.badge ? `<div class="product-badge">${getBadgeText(produto.badge)}</div>` : '')}
+        </div>
+        <div class="product-body">
+            <h3 class="product-title">${produto.nome}</h3>
+            <p class="product-description">${produto.descricao || 'Produto premium'}</p>
+            <div class="product-rating">
+                <span class="product-stars">★★★★★</span>
+                <span>(${getAvaliacoesCount(produto)} avaliações)</span>
+            </div>
+            <div class="product-footer">
+                <span class="product-price">R$ ${produto.preco.toFixed(2)}</span>
+                ${esgotado
+                    ? `<button class="add-btn" disabled>Esgotado</button>`
+                    : `<button class="add-btn" onclick="abrirModalProduto('${produto.id}')">Adicionar</button>`}
+            </div>
+        </div>
+    `;
+    return card;
+}
+
+// Com "Todos" selecionado e sem busca ativa, agrupa os produtos em uma seção por
+// categoria (cada uma com seu próprio título e sua própria grade), em vez de
+// misturar tudo numa grade só.
+function renderizarProdutosAgrupados(container) {
+    container.innerHTML = '';
+
+    const categorias = ['burgers', 'pizza', 'bebidas', 'acompanhamentos', 'sobremesas'];
+    const nomesCategoria = {
+        'burgers': 'Burgers',
+        'pizza': 'Pizzas',
+        'bebidas': 'Bebidas',
+        'acompanhamentos': 'Acompanhamentos',
+        'sobremesas': 'Sobremesas'
+    };
+
+    // Categorias conhecidas primeiro, na ordem fixa acima; qualquer categoria nova
+    // que apareça nos produtos (fora dessa lista) entra ordenada por nome, no final.
+    const categoriasExtras = [...new Set(produtos.map(p => p.categoria))]
+        .filter(cat => !categorias.includes(cat))
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+    [...categorias, ...categoriasExtras].forEach(cat => {
+        const itensCategoria = produtos.filter(p => p.categoria === cat);
+        if (itensCategoria.length === 0) return;
+
+        const secao = document.createElement('div');
+        secao.className = 'category-section';
+
+        const titulo = document.createElement('h4');
+        titulo.className = 'category-section-title';
+        titulo.innerHTML = `<span class="category-section-icon">${getIconeCategoria(cat)}</span> ${nomesCategoria[cat] || capitalize(cat)}`;
+        secao.appendChild(titulo);
+
+        const grid = document.createElement('div');
+        grid.className = 'products-grid';
+        itensCategoria.forEach(produto => grid.appendChild(criarCardProdutoEl(produto)));
+        secao.appendChild(grid);
+
+        container.appendChild(secao);
+    });
+}
+
 function renderizarProdutos(acumular = false) {
     const container = document.getElementById('productsContainer');
 
-    if (!acumular) {
-        container.innerHTML = '';
-    }
-
     if (produtos.length === 0) {
+        container.classList.remove('products-sections');
+        container.classList.add('products-grid');
         container.innerHTML = '<p style="grid-column: 1/-1; text-align: center; padding: 40px;">Nenhum produto encontrado 😕</p>';
         document.getElementById('loadMoreBtn').style.display = 'none';
         return;
+    }
+
+    const agruparPorCategoria = filtroAtivo === 'todos' && normalizarTexto(termoBusca) === '';
+
+    if (agruparPorCategoria) {
+        container.classList.remove('products-grid');
+        container.classList.add('products-sections');
+        renderizarProdutosAgrupados(container);
+        document.getElementById('loadMoreBtn').style.display = 'none';
+        return;
+    }
+
+    container.classList.remove('products-sections');
+    container.classList.add('products-grid');
+
+    if (!acumular) {
+        container.innerHTML = '';
     }
 
     // Quando acumula (clique em "Carregar Mais"), só renderiza os itens NOVOS dessa página
@@ -434,34 +581,7 @@ function renderizarProdutos(acumular = false) {
     const fim = currentPage * productsPerPage;
     const produtosExibir = produtos.slice(inicio, fim);
 
-    produtosExibir.forEach(produto => {
-        const card = document.createElement('div');
-        const esgotado = estaEsgotado(produto);
-        card.className = 'product-card' + (esgotado ? ' esgotado' : '');
-        card.innerHTML = `
-            <div style="position: relative;">
-                <img src="${produto.imagem}" alt="${produto.nome}" class="product-image">
-                ${esgotado
-                    ? '<div class="product-badge badge-esgotado">Esgotado</div>'
-                    : (produto.badge ? `<div class="product-badge">${getBadgeText(produto.badge)}</div>` : '')}
-            </div>
-            <div class="product-body">
-                <h3 class="product-title">${produto.nome}</h3>
-                <p class="product-description">${produto.descricao || 'Produto premium'}</p>
-                <div class="product-rating">
-                    <span class="product-stars">★★★★★</span>
-                    <span>(${getAvaliacoesCount(produto)} avaliações)</span>
-                </div>
-                <div class="product-footer">
-                    <span class="product-price">R$ ${produto.preco.toFixed(2)}</span>
-                    ${esgotado
-                        ? `<button class="add-btn" disabled>Esgotado</button>`
-                        : `<button class="add-btn" onclick="abrirModalProduto('${produto.id}')">Adicionar</button>`}
-                </div>
-            </div>
-        `;
-        container.appendChild(card);
-    });
+    produtosExibir.forEach(produto => container.appendChild(criarCardProdutoEl(produto)));
 
     // Mostrar botão "Carregar Mais"
     if (fim < produtos.length) {
@@ -684,13 +804,15 @@ function removerDoCarrinho(index) {
     showToast('Item removido do carrinho', 'success');
 }
 
+// O carrinho é só de memória — não persiste no localStorage de propósito, pra sempre
+// começar vazio em cada nova visita/sessão (recarregar a página zera o carrinho).
 function salvarCarrinho() {
-    localStorage.setItem('carrinho', JSON.stringify(carrinho));
+    // Intencionalmente vazio — sem persistência.
 }
 
 function carregarCarrinho() {
-    const carrinhoSalvo = localStorage.getItem('carrinho');
-    carrinho = carrinhoSalvo ? JSON.parse(carrinhoSalvo) : [];
+    localStorage.removeItem('carrinho'); // limpa resíduo de versões antigas que persistiam o carrinho
+    carrinho = [];
     atualizarCarrinho();
 }
 
@@ -699,13 +821,18 @@ function atualizarCarrinho() {
     const countEl = document.getElementById('cartCount');
     const summaryEl = document.getElementById('cartSummary');
     const checkoutEl = document.getElementById('checkoutSection');
+    const clearBtn = document.getElementById('clearCartBtn');
+    const footerEl = document.getElementById('cartFooter');
 
     countEl.textContent = carrinho.length;
+    clearBtn.style.display = carrinho.length > 0 ? 'inline' : 'none';
 
     if (carrinho.length === 0) {
         container.innerHTML = '<p class="empty-cart">Seu carrinho está vazio</p>';
         summaryEl.style.display = 'none';
         checkoutEl.style.display = 'none';
+        footerEl.style.display = 'none';
+        atualizarCarrinhoFlutuante(0, 0);
         return;
     }
 
@@ -750,6 +877,25 @@ function atualizarCarrinho() {
 
     summaryEl.style.display = 'block';
     checkoutEl.style.display = 'block';
+    footerEl.style.display = 'block';
+
+    atualizarCarrinhoFlutuante(carrinho.length, total);
+}
+
+// Espelha a contagem/total no botão fixo embaixo da tela (mobile). Some quando
+// o carrinho está vazio; o CSS também some quando o carrinho lateral está aberto.
+function atualizarCarrinhoFlutuante(quantidadeItens, total) {
+    const barra = document.getElementById('floatingCartBar');
+    if (!barra) return;
+
+    if (quantidadeItens === 0) {
+        barra.classList.remove('show');
+        return;
+    }
+
+    document.getElementById('floatingCartCount').textContent = quantidadeItens;
+    document.getElementById('floatingCartTotal').textContent = `R$ ${total.toFixed(2)}`;
+    barra.classList.add('show');
 }
 
 // Lê o tipo de entrega marcado no momento e retorna a taxa correta (com base no bairro escolhido)
@@ -836,9 +982,23 @@ document.getElementById('cartBtn').addEventListener('click', () => {
     document.getElementById('overlay').classList.add('active');
 });
 
+document.getElementById('floatingCartBar')?.addEventListener('click', () => {
+    document.getElementById('cartSidebar').classList.add('active');
+    document.getElementById('overlay').classList.add('active');
+});
+
 document.getElementById('closeCart').addEventListener('click', () => {
     document.getElementById('cartSidebar').classList.remove('active');
     document.getElementById('overlay').classList.remove('active');
+});
+
+document.getElementById('clearCartBtn').addEventListener('click', () => {
+    if (carrinho.length === 0) return;
+    if (!confirm('Esvaziar o carrinho? Isso remove todos os itens adicionados.')) return;
+    carrinho = [];
+    salvarCarrinho();
+    atualizarCarrinho();
+    showToast('Carrinho esvaziado', 'info');
 });
 
 document.getElementById('overlay').addEventListener('click', () => {
@@ -873,7 +1033,34 @@ document.addEventListener('change', (e) => {
     }
 });
 
+// ========== FORMA DE PAGAMENTO ==========
+document.getElementById('paymentMethodsGrid').addEventListener('change', (e) => {
+    if (e.target.name !== 'paymentMethod') return;
+
+    document.querySelectorAll('.payment-method-option').forEach(opt => opt.classList.remove('selected'));
+    e.target.closest('.payment-method-option')?.classList.add('selected');
+    document.getElementById('paymentMethodsGrid').classList.remove('input-error');
+
+    const trocoWrap = document.getElementById('paymentTrocoWrap');
+    if (e.target.value === 'dinheiro') {
+        trocoWrap.classList.add('show');
+    } else {
+        trocoWrap.classList.remove('show');
+        document.getElementById('paymentTroco').value = '';
+    }
+});
+
 document.getElementById('checkoutBtn').addEventListener('click', async () => {
+    const statusAgora = calcularStatusLoja(configLoja);
+    if (statusAgora.controlado && !statusAgora.aberta) {
+        atualizarStatusLoja();
+        const proxima = statusAgora.proximaAbertura
+            ? ` Voltamos ${statusAgora.proximaAbertura.label} às ${statusAgora.proximaAbertura.hora}.`
+            : '';
+        showToast(`Estamos fechados no momento.${proxima}`, 'error');
+        return;
+    }
+
     const nomeInput = document.getElementById('clientName');
     const telefoneInput = document.getElementById('clientPhone');
     const enderecoInput = document.getElementById('clientAddress');
@@ -886,8 +1073,14 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
     const bairro = tipoEntrega === 'delivery' ? bairroSelect.value : '';
     const observacoes = document.getElementById('orderObservations').value.trim();
 
+    const metodoPagamentoInput = document.querySelector('input[name="paymentMethod"]:checked');
+    const formaPagamento = metodoPagamentoInput ? metodoPagamentoInput.value : '';
+    const trocoInput = document.getElementById('paymentTroco');
+    const trocoPara = formaPagamento === 'dinheiro' ? trocoInput.value.trim() : '';
+
     // Limpar destaques de erro anteriores
     [nomeInput, telefoneInput, enderecoInput, bairroSelect].forEach(el => el.classList.remove('input-error'));
+    document.getElementById('paymentMethodsGrid').classList.remove('input-error');
 
     // Validar campos obrigatórios
     if (!nome) {
@@ -918,6 +1111,13 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
         return;
     }
 
+    if (!formaPagamento) {
+        document.getElementById('paymentMethodsGrid').classList.add('input-error');
+        showToast('Escolha a forma de pagamento!', 'error');
+        document.getElementById('paymentMethodsGrid').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+
     if (carrinho.length === 0) {
         showToast('Carrinho vazio!', 'error');
         return;
@@ -934,11 +1134,10 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
 
     // Gerar código do pedido (mesmo código vai pro cliente no WhatsApp e pro Firestore)
     const codigoPedido = gerarCodigoPedido();
+    const taxaEntregaPedido = tipoEntrega === 'delivery' ? obterTaxaEntregaSelecionada() : 0;
 
     // Salvar pedido no Firebase PRIMEIRO — precisamos do ID gerado pelo Firestore pra
     // montar o link de rastreamento antes de montar a mensagem do WhatsApp.
-    const taxaEntregaPedido = tipoEntrega === 'delivery' ? obterTaxaEntregaSelecionada() : 0;
-
     const pedidoSalvo = await salvarPedidoFirebase({
         codigoPedido,
         nome,
@@ -949,7 +1148,9 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
         observacoes,
         itens: carrinho,
         total: calcularTotal(tipoEntrega),
-        taxaEntrega: taxaEntregaPedido
+        taxaEntrega: taxaEntregaPedido,
+        formaPagamento,
+        trocoPara: trocoPara || null
     });
 
     const linkRastreio = pedidoSalvo
@@ -957,7 +1158,7 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
         : null;
 
     // Gerar mensagem WhatsApp
-    const mensagem = gerarMensagemWhatsApp(nome, telefone, tipoEntrega, endereco, bairro, observacoes, codigoPedido, linkRastreio);
+    const mensagem = gerarMensagemWhatsApp(nome, telefone, tipoEntrega, endereco, bairro, observacoes, codigoPedido, linkRastreio, formaPagamento, trocoPara);
 
     // Enviar para WhatsApp (usa o número configurado no painel admin)
     const numeroWhatsApp = apenasNumeros(configLoja.telefone) || WHATSAPP_NUMBER_PADRAO;
@@ -973,6 +1174,10 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
     document.getElementById('clientAddress').value = '';
     document.getElementById('clientBairro').value = '';
     document.getElementById('orderObservations').value = '';
+    document.querySelectorAll('input[name="paymentMethod"]').forEach(r => r.checked = false);
+    document.querySelectorAll('.payment-method-option').forEach(opt => opt.classList.remove('selected'));
+    document.getElementById('paymentTrocoWrap').classList.remove('show');
+    document.getElementById('paymentTroco').value = '';
 
     document.getElementById('cartSidebar').classList.remove('active');
     document.getElementById('overlay').classList.remove('active');
@@ -1011,7 +1216,7 @@ async function validarEstoqueCarrinho() {
     }
 }
 
-function gerarMensagemWhatsApp(nome, telefone, tipoEntrega, endereco, bairro, observacoes, codigoPedido, linkRastreio) {
+function gerarMensagemWhatsApp(nome, telefone, tipoEntrega, endereco, bairro, observacoes, codigoPedido, linkRastreio, formaPagamento, trocoPara) {
     let mensagem = `*Novo Pedido - ${configLoja.nome}* 🍔\n`;
     mensagem += `━━━━━━━━━━━━━━━━━━━━\n`;
     mensagem += `*Código do Pedido:* #${codigoPedido}\n`;
@@ -1045,7 +1250,13 @@ function gerarMensagemWhatsApp(nome, telefone, tipoEntrega, endereco, bairro, ob
     } else {
         mensagem += `*📍 Entrega:* Retirada na loja\n`;
     }
-    
+
+    mensagem += `*💳 Pagamento:* ${formatarFormaPagamento(formaPagamento)}`;
+    if (formaPagamento === 'dinheiro' && trocoPara) {
+        mensagem += ` (troco para R$ ${Number(trocoPara).toFixed(2)})`;
+    }
+    mensagem += `\n`;
+
     if (observacoes) {
         mensagem += `*📝 Observações:* ${observacoes}\n`;
     }

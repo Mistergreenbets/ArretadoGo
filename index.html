@@ -78,6 +78,88 @@
             font-weight: 600;
             font-size: 15px;
         }
+
+        /* ===== SEÇÕES DO CHECKOUT (Dados / Entrega / Pagamento / Observações) ===== */
+        .checkout-fieldset {
+            padding-top: 16px;
+            margin-top: 16px;
+            border-top: 1px solid #f0f0f0;
+        }
+        .checkout-fieldset:first-child {
+            padding-top: 0;
+            margin-top: 0;
+            border-top: none;
+        }
+        .checkout-fieldset-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 10px;
+            color: #888;
+        }
+
+        /* ===== FORMA DE PAGAMENTO (checkout) ===== */
+        .payment-methods-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .payment-method-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 10px;
+            border: 2px solid #eee;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #444;
+            background: #fff;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+        .payment-method-option:active {
+            transform: scale(0.97);
+        }
+        .payment-method-option .payment-icon {
+            font-size: 18px;
+            line-height: 1;
+        }
+        .payment-method-option input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .payment-method-option.selected {
+            border-color: var(--primary-color, #C20000);
+            background: rgba(194, 0, 0, 0.06);
+            color: var(--primary-color, #C20000);
+        }
+        .payment-method-option.selected .payment-icon {
+            filter: none;
+        }
+        .payment-troco-wrap {
+            display: none;
+            margin-bottom: 12px;
+        }
+        .payment-troco-wrap.show {
+            display: block;
+        }
+        .payment-troco-wrap small {
+            display: block;
+            margin-top: 4px;
+            color: #888;
+            font-size: 11px;
+        }
+        .payment-methods-grid.input-error {
+            outline: 2px solid #e53e3e;
+            outline-offset: 4px;
+            border-radius: 10px;
+        }
     </style>
 </head>
 <body>
@@ -104,6 +186,23 @@
         </div>
     </header>
 
+    <!-- Mede a altura real do header (que pode crescer no mobile, quando a busca quebra pra
+         2ª linha) e guarda numa variável CSS. Sem isso, o banner de status e a Hero abaixo
+         ficam com um espaçamento fixo que não é suficiente quando o header é mais alto,
+         fazendo eles aparecerem por trás do header. -->
+    <script>
+    (function () {
+        function medirHeader() {
+            var header = document.querySelector('.header');
+            if (!header) return;
+            document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
+        }
+        medirHeader();
+        window.addEventListener('resize', medirHeader);
+        window.addEventListener('load', medirHeader);
+    })();
+    </script>
+
     <!-- BANNER DE STATUS DA LOJA (aberta/fechada), controlado pelo horário de funcionamento no admin -->
     <div class="store-status-banner" id="storeStatusBanner" style="display:none;"></div>
 
@@ -111,7 +210,7 @@
     <!-- Começa escondida (hero-loading) até o script logo abaixo (cache local) ou o app.js
          (Firestore) preencherem o texto configurado no admin — evita mostrar o texto de
          fábrica por uma fração de segundo antes do texto real aparecer. -->
-    <section class="hero hero-loading" id="heroSection">
+    <section class="hero hero-loading hero-topo" id="heroSection">
         <div class="container hero-content">
             <div class="hero-text">
                 <h2 class="hero-title"><span id="heroPrefixoTexto">Aproveite Sua</span> <span class="highlight" id="heroDestaqueTexto">Comida Deliciosa</span></h2>
@@ -315,54 +414,105 @@
     <div class="cart-sidebar" id="cartSidebar">
         <div class="cart-header">
             <h3>Seu Carrinho</h3>
-            <button class="close-cart" id="closeCart">&times;</button>
-        </div>
-
-        <div class="cart-items" id="cartItems">
-            <p class="empty-cart">Seu carrinho está vazio</p>
-        </div>
-
-        <div class="cart-summary" id="cartSummary" style="display: none;">
-            <div class="summary-row">
-                <span>Subtotal:</span>
-                <span id="subtotalPrice">R$ 0,00</span>
-            </div>
-            <div class="summary-row">
-                <span>Entrega:</span>
-                <span id="deliveryPrice">R$ 0,00</span>
-            </div>
-            <div class="summary-row total">
-                <span>Total:</span>
-                <span id="totalPrice">R$ 0,00</span>
+            <div style="display:flex; align-items:center; gap:14px;">
+                <button type="button" id="clearCartBtn" class="clear-cart-btn" style="display:none;" title="Esvaziar carrinho">Esvaziar</button>
+                <button class="close-cart" id="closeCart">&times;</button>
             </div>
         </div>
 
-        <div class="checkout-section" id="checkoutSection" style="display: none;">
-            <input type="text" id="clientName" placeholder="Seu Nome *" class="input-field" required>
-            <input type="tel" id="clientPhone" placeholder="Seu Telefone (11 99999-9999) *" class="input-field" required>
-            
-            <div class="delivery-type">
-                <label>
-                    <input type="radio" name="delivery" value="retirada" checked>
-                    Retirada
-                </label>
-                <label>
-                    <input type="radio" name="delivery" value="delivery">
-                    Delivery
-                </label>
+        <div class="cart-scroll-body" id="cartScrollBody">
+            <div class="cart-items" id="cartItems">
+                <p class="empty-cart">Seu carrinho está vazio</p>
             </div>
 
-            <select id="clientBairro" class="input-field" style="display: none;">
-                <option value="">Selecione seu bairro</option>
-            </select>
-            <input type="text" id="clientAddress" placeholder="Endereço (rua, número, complemento)" class="input-field" style="display: none;">
-            <textarea id="orderObservations" placeholder="Observações do Pedido" class="input-field"></textarea>
+            <div class="cart-summary" id="cartSummary" style="display: none;">
+                <div class="summary-row">
+                    <span>Subtotal:</span>
+                    <span id="subtotalPrice">R$ 0,00</span>
+                </div>
+                <div class="summary-row">
+                    <span>Entrega:</span>
+                    <span id="deliveryPrice">R$ 0,00</span>
+                </div>
+                <div class="summary-row total">
+                    <span>Total:</span>
+                    <span id="totalPrice">R$ 0,00</span>
+                </div>
+            </div>
 
+            <div class="checkout-section" id="checkoutSection" style="display: none;">
+                <div class="checkout-fieldset">
+                    <div class="checkout-fieldset-title">👤 Seus Dados</div>
+                    <input type="text" id="clientName" placeholder="Seu Nome *" class="input-field" required>
+                    <input type="tel" id="clientPhone" placeholder="Seu Telefone (11 99999-9999) *" class="input-field" required>
+                </div>
+
+                <div class="checkout-fieldset">
+                    <div class="checkout-fieldset-title">🛵 Entrega</div>
+                    <div class="delivery-type">
+                        <label>
+                            <input type="radio" name="delivery" value="retirada" checked>
+                            Retirada
+                        </label>
+                        <label>
+                            <input type="radio" name="delivery" value="delivery">
+                            Delivery
+                        </label>
+                    </div>
+
+                    <select id="clientBairro" class="input-field" style="display: none;">
+                        <option value="">Selecione seu bairro</option>
+                    </select>
+                    <input type="text" id="clientAddress" placeholder="Endereço (rua, número, complemento)" class="input-field" style="display: none;">
+                </div>
+
+                <div class="checkout-fieldset">
+                    <div class="checkout-fieldset-title">💳 Forma de Pagamento *</div>
+                    <div class="payment-methods-grid" id="paymentMethodsGrid">
+                        <label class="payment-method-option" data-metodo="pix">
+                            <input type="radio" name="paymentMethod" value="pix">
+                            <span class="payment-icon">📱</span> Pix
+                        </label>
+                        <label class="payment-method-option" data-metodo="credito">
+                            <input type="radio" name="paymentMethod" value="credito">
+                            <span class="payment-icon">💳</span> Crédito
+                        </label>
+                        <label class="payment-method-option" data-metodo="debito">
+                            <input type="radio" name="paymentMethod" value="debito">
+                            <span class="payment-icon">💳</span> Débito
+                        </label>
+                        <label class="payment-method-option" data-metodo="dinheiro">
+                            <input type="radio" name="paymentMethod" value="dinheiro">
+                            <span class="payment-icon">💵</span> Dinheiro
+                        </label>
+                    </div>
+
+                    <div class="payment-troco-wrap" id="paymentTrocoWrap">
+                        <input type="text" inputmode="decimal" id="paymentTroco" placeholder="Troco para quanto? (ex: 50)" class="input-field">
+                        <small>Deixe em branco se não precisar de troco.</small>
+                    </div>
+                </div>
+
+                <div class="checkout-fieldset">
+                    <div class="checkout-fieldset-title">📝 Observações</div>
+                    <textarea id="orderObservations" placeholder="Ex: sem cebola, ponto da carne, etc." class="input-field" style="margin-bottom: 0;"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="cart-footer" id="cartFooter" style="display: none;">
             <button class="btn btn-primary" id="checkoutBtn" style="width: 100%;">
                 Finalizar Pedido no WhatsApp
             </button>
         </div>
     </div>
+
+    <!-- CARRINHO FLUTUANTE (mobile) -->
+    <button type="button" class="floating-cart-bar" id="floatingCartBar">
+        <span class="floating-cart-icon">🛒</span>
+        <span class="floating-cart-text"><span id="floatingCartCount">0</span> itens no carrinho</span>
+        <span class="floating-cart-total" id="floatingCartTotal">R$ 0,00</span>
+    </button>
 
     <!-- OVERLAY -->
     <div class="overlay" id="overlay"></div>

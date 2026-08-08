@@ -27,7 +27,12 @@ service cloud.firestore {
 
     match /motoboys/{uid} {
       allow read: if isAdmin() || (request.auth != null && request.auth.uid == uid);
-      allow write: if isAdmin();
+      allow write: if isAdmin() || (
+        // Motoboy pode alternar o próprio status online/offline, mais nada
+        request.auth != null && request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['online']) &&
+        request.resource.data.online is bool
+      );
     }
 
     // Allowlist de admins. Só é criada/editada manualmente pelo Console do Firebase
@@ -45,7 +50,8 @@ service cloud.firestore {
       allow create: if
         request.resource.data.keys().hasOnly([
           'codigoPedido', 'nome', 'telefone', 'tipoEntrega', 'endereco',
-          'bairro', 'observacoes', 'itens', 'total', 'criadoEm', 'status'
+          'bairro', 'observacoes', 'itens', 'total', 'criadoEm', 'status', 'taxaEntrega',
+          'formaPagamento', 'trocoPara'
         ]) &&
         request.resource.data.keys().hasAll(['nome', 'telefone', 'itens', 'total', 'status']) &&
         request.resource.data.status == 'pendente' &&
@@ -53,7 +59,10 @@ service cloud.firestore {
         request.resource.data.telefone is string && request.resource.data.telefone.size() > 0 &&
         request.resource.data.tipoEntrega in ['retirada', 'delivery'] &&
         request.resource.data.itens is list && request.resource.data.itens.size() > 0 && request.resource.data.itens.size() < 100 &&
-        request.resource.data.total is number && request.resource.data.total > 0;
+        request.resource.data.total is number && request.resource.data.total > 0 &&
+        (!('taxaEntrega' in request.resource.data) || request.resource.data.taxaEntrega is number) &&
+        (!('formaPagamento' in request.resource.data) || request.resource.data.formaPagamento in ['pix', 'credito', 'debito', 'dinheiro']) &&
+        (!('trocoPara' in request.resource.data) || request.resource.data.trocoPara == null || request.resource.data.trocoPara is string);
 
       // "get" (ler UM pedido pelo ID) é público — é assim que a página de rastreamento
       // funciona sem exigir login do cliente. O ID do documento é um código longo e

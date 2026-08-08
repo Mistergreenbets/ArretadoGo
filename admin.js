@@ -651,6 +651,12 @@ function limparFormProduto() {
 // STATUS_PEDIDO, MENSAGENS_STATUS, apenasNumeros, montarLinkWhatsAppStatus e
 // enviarAtualizacaoWhatsApp agora vêm de pedido-status-utils.js (compartilhado com motoboy.js)
 
+// Texto amigável da forma de pagamento (mesmos valores salvos pelo checkout em app.js)
+function formatarFormaPagamentoAdmin(metodo) {
+    const labels = { pix: '📱 Pix', credito: '💳 Crédito', debito: '💳 Débito', dinheiro: '💵 Dinheiro' };
+    return labels[metodo] || metodo;
+}
+
 function renderizarPedidos() {
     const container = document.getElementById('ordersList');
 
@@ -697,6 +703,7 @@ function renderizarPedidos() {
                 <strong>Total:</strong> R$ ${pedido.total?.toFixed(2) || '0.00'}<br>
                 <strong>Tipo:</strong> ${pedido.tipoEntrega === 'delivery' ? '🚗 Delivery' : '🏪 Retirada'}
                 ${pedido.endereco ? `<br><strong>Endereço:</strong> ${pedido.endereco}` : ''}
+                ${pedido.formaPagamento ? `<br><strong>Pagamento:</strong> ${formatarFormaPagamentoAdmin(pedido.formaPagamento)}${pedido.formaPagamento === 'dinheiro' && pedido.trocoPara ? ` (troco p/ R$ ${Number(pedido.trocoPara).toFixed(2)})` : ''}` : ''}
             </div>
             <div class="order-status-row">
                 <label><strong>Status:</strong></label>
@@ -1607,6 +1614,13 @@ function relatorioFormatarTelefone(tel) {
     return tel || '';
 }
 
+function relatorioFormatarPagamento(metodo, trocoPara) {
+    const labels = { pix: 'Pix', credito: 'Cartão de Crédito', debito: 'Cartão de Débito', dinheiro: 'Dinheiro' };
+    const label = labels[metodo] || '—';
+    if (metodo === 'dinheiro' && trocoPara) return `${label} (troco p/ R$ ${Number(trocoPara).toFixed(2)})`;
+    return label;
+}
+
 // Título de seção na aba Resumo (barra escura, texto branco) — retorna a próxima linha livre
 function relatorioTituloSecao(ws, linha, texto) {
     ws.mergeCells(`B${linha}:C${linha}`);
@@ -1805,6 +1819,7 @@ async function exportarRelatorio(periodo) {
             { header: 'Telefone', key: 'telefone', width: 17 },
             { header: 'Tipo', key: 'tipo', width: 12 },
             { header: 'Status', key: 'status', width: 16 },
+            { header: 'Pagamento', key: 'pagamento', width: 18 },
             { header: 'Total', key: 'total', width: 14 },
             { header: 'Criado em', key: 'criadoEm', width: 19 },
             { header: 'Entregue em', key: 'entregueEm', width: 19 }
@@ -1818,6 +1833,7 @@ async function exportarRelatorio(periodo) {
                 telefone: relatorioFormatarTelefone(p.telefone),
                 tipo: p.tipoEntrega === 'delivery' ? 'Delivery' : 'Retirada',
                 status: RELATORIO_STATUS_LABELS[p.status] || 'Pendente',
+                pagamento: relatorioFormatarPagamento(p.formaPagamento, p.trocoPara),
                 total: p.total || 0,
                 criadoEm: paraData(p.criadoEm),
                 entregueEm: paraData(p.entregueEm)

@@ -11,7 +11,6 @@ let mapaMotoboy = null;
 let marcadorMotoboy = null;
 let pedidoAtualId = null;
 let tempoEntregaConfig = 30; // minutos — valor padrão até a config da loja carregar
-let telefoneLojaConfig = null;
 let intervaloPrevisao = null; // recalcula "chega em X min" a cada minuto, sem esperar o Firestore
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -26,12 +25,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const config = await getSettings();
         if (config?.tempoEntrega) tempoEntregaConfig = config.tempoEntrega;
-        if (config?.telefone) telefoneLojaConfig = config.telefone;
     } catch (error) {
         console.error('Erro ao carregar configurações da loja:', error);
     }
 
-    inicializarBarraAjuda();
     observarPedido(pedidoAtualId, renderizarPedido);
 
     // A previsão ("chega em X min") é calculada a partir da hora atual, então precisa
@@ -41,41 +38,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 30000);
 });
 
-function inicializarBarraAjuda() {
-    document.getElementById('btnCompartilhar')?.addEventListener('click', async () => {
-        const url = window.location.href;
-        if (navigator.share) {
-            try {
-                await navigator.share({ title: 'Acompanhar meu pedido', url });
-            } catch (e) { /* usuário cancelou o compartilhamento — sem problema */ }
-        } else {
-            await navigator.clipboard.writeText(url);
-            showToast('Link copiado!', 'success');
-        }
-    });
-
-    document.getElementById('btnAjudaWhatsapp')?.addEventListener('click', () => {
-        const numero = formatarNumeroWhatsAppLocal(telefoneLojaConfig);
-        const codigo = window.pedidoAtualCache?.codigoPedido || pedidoAtualId;
-        const texto = encodeURIComponent(`Olá! Preciso de ajuda com o meu pedido #${codigo}.`);
-        if (numero) {
-            window.open(`https://wa.me/${numero}?text=${texto}`, '_blank');
-        } else {
-            showToast('WhatsApp da loja não configurado', 'error');
-        }
-    });
-}
-
-function formatarNumeroWhatsAppLocal(telefone) {
-    const numero = (telefone || '').toString().replace(/\D/g, '');
-    if (!numero) return null;
-    if (numero.length === 10 || numero.length === 11) return '55' + numero;
-    return numero;
-}
-
 function mostrarErro(mensagem) {
-    document.getElementById('conteudoRastreio').innerHTML = `<div class="rastreio-card"><div class="erro-box">${mensagem}</div></div>`;
-    document.getElementById('ajudaBar').style.display = 'none';
+    document.getElementById('conteudoRastreio').innerHTML = `<div class="erro-box">${mensagem}</div>`;
 }
 
 function renderizarPedido(pedido) {
@@ -86,8 +50,6 @@ function renderizarPedido(pedido) {
         mostrarErro('Pedido não encontrado. Ele pode ter sido removido, ou o link está incorreto.');
         return;
     }
-
-    document.getElementById('ajudaBar').style.display = 'flex';
 
     const status = pedido.status || 'pendente';
 
@@ -103,7 +65,6 @@ function renderizarPedido(pedido) {
 
     const etapas = ETAPAS_PEDIDO.filter(e => !e.apenasDelivery || pedido.tipoEntrega === 'delivery');
     const indiceAtual = etapas.findIndex(e => e.status === status);
-    const progressoPercentual = etapas.length > 1 ? (Math.max(0, indiceAtual) / (etapas.length - 1)) * 100 : 0;
 
     const timelineHtml = etapas.map((etapa, i) => {
         let classe = '';
@@ -122,16 +83,13 @@ function renderizarPedido(pedido) {
         <div class="rastreio-card">
             ${montarCabecalho(pedido)}
             <div class="timeline">
-                <div class="timeline-progresso" style="width:${progressoPercentual}%;"></div>
                 ${timelineHtml}
             </div>
             <div class="previsao-box" id="previsaoBox"></div>
-            ${mostraMapa ? '<div id="mapaMotoboy"></div><p class="mapa-legenda"><span class="mapa-legenda-dot"></span> Localização aproximada do motoboy, atualizada em tempo real.</p>' : ''}
+            ${mostraMapa ? '<div id="mapaMotoboy"></div><p class="mapa-legenda">📍 Localização aproximada do motoboy, atualizada em tempo real.</p>' : ''}
             ${montarDetalhesPedido(pedido)}
         </div>
     `;
-
-    document.getElementById('codigoCopiarBtn')?.addEventListener('click', () => copiarCodigoPedido(pedido));
 
     atualizarTextoPrevisao(pedido);
     if (mostraMapa) atualizarMapa(pedido.localizacaoAtual);
@@ -139,22 +97,9 @@ function renderizarPedido(pedido) {
 
 function montarCabecalho(pedido) {
     return `
-        <div class="rastreio-codigo-row">
-            <span class="rastreio-codigo">Pedido #${escaparHtml(pedido.codigoPedido || pedido.id)}</span>
-            <button type="button" class="rastreio-copiar-btn" id="codigoCopiarBtn">📋 Copiar</button>
-        </div>
+        <div class="rastreio-codigo">Pedido #${escaparHtml(pedido.codigoPedido || pedido.id)}</div>
         <div class="rastreio-titulo">Olá, ${escaparHtml(pedido.nome || '')}!</div>
     `;
-}
-
-async function copiarCodigoPedido(pedido) {
-    const codigo = pedido.codigoPedido || pedido.id;
-    try {
-        await navigator.clipboard.writeText(codigo);
-        showToast('Código copiado!', 'success');
-    } catch (e) {
-        showToast('Não foi possível copiar', 'error');
-    }
 }
 
 // ========== PREVISÃO DE ENTREGA/RETIRADA ==========
@@ -216,6 +161,11 @@ function montarDetalhesPedido(pedido) {
             ${montarItensDetalhados(pedido)}
         </div>
         ${montarEndereco(pedido)}
+        ${pedido.formaPagamento ? `
+        <div class="rastreio-secao">
+            <div class="rastreio-secao-titulo">💳 Pagamento</div>
+            <div class="rastreio-endereco">${escaparHtml(rastreioFormatarPagamento(pedido.formaPagamento))}${pedido.formaPagamento === 'dinheiro' && pedido.trocoPara ? ` — troco para R$ ${Number(pedido.trocoPara).toFixed(2)}` : ''}</div>
+        </div>` : ''}
         ${pedido.observacoes ? `
         <div class="rastreio-secao">
             <div class="rastreio-secao-titulo">📝 Observações do pedido</div>
@@ -226,6 +176,11 @@ function montarDetalhesPedido(pedido) {
             <strong>${formatarMoedaLocal(pedido.total)}</strong>
         </div>
     `;
+}
+
+function rastreioFormatarPagamento(metodo) {
+    const labels = { pix: 'Pix', credito: 'Cartão de Crédito', debito: 'Cartão de Débito', dinheiro: 'Dinheiro' };
+    return labels[metodo] || metodo;
 }
 
 function montarItensDetalhados(pedido) {

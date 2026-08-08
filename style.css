@@ -2,6 +2,7 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
 }
 
 :root {
@@ -20,6 +21,7 @@
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
     --transition: all 0.3s ease;
+    --header-height: 70px; /* recalculado via JS (ver index.html) — cobre o header quebrando em 2 linhas no mobile */
 }
 
 body {
@@ -50,7 +52,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 70px;
+    min-height: 70px;
+    padding: 10px 0;
     gap: 20px;
 }
 
@@ -139,7 +142,7 @@ body {
 
 /* ========== BANNER STATUS DA LOJA ========== */
 .store-status-banner {
-    margin-top: 70px; /* compensa o header fixo, já que o banner some do fluxo quando display:none */
+    margin-top: var(--header-height); /* compensa o header fixo, já que o banner some do fluxo quando display:none */
     background: #2B0000;
     color: #fff;
     text-align: center;
@@ -150,12 +153,19 @@ body {
 
 /* ========== HERO SECTION ========== */
 .hero {
-    margin-top: 70px;
     padding: 60px 0;
     background: linear-gradient(135deg, var(--secondary-color) 0%, #4A0E0E 100%);
     color: var(--white);
     opacity: 1;
     transition: opacity 0.25s ease;
+}
+
+/* Só empurra a Hero pra baixo do header quando ELA é o primeiro elemento visível da página
+   (banner de loja fechada escondido). Quando o banner está visível, ele já cuida de empurrar
+   tudo pra baixo do header — se a Hero também tivesse essa margem, o espaço dobraria (era
+   exatamente esse o bug do espaço em branco). A classe é alternada via JS em atualizarStatusLoja(). */
+.hero.hero-topo {
+    margin-top: var(--header-height);
 }
 
 /* Escondida até o texto certo (do cache local ou do Firestore) estar pronto pra mostrar —
@@ -304,7 +314,16 @@ body {
 }
 
 .category-icon {
-    font-size: 32px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.category-icon svg {
+    width: 28px;
+    height: 28px;
 }
 
 .category-name {
@@ -476,6 +495,66 @@ body {
     margin-bottom: 20px;
 }
 
+/* Modo agrupado por categoria: o container vira uma lista de seções, não uma
+   grade — cada seção é que tem sua própria .products-grid interna. */
+.products-sections {
+    display: block;
+}
+
+.category-section {
+    margin-bottom: 48px;
+}
+
+.category-section:last-child {
+    margin-bottom: 0;
+}
+
+.category-section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.category-section-icon {
+    display: inline-flex;
+    color: var(--primary-color);
+}
+
+.category-section-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.filter-btn:focus {
+    outline: none;
+}
+
+.filter-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.25);
+}
+
+.filter-btn-icon {
+    display: inline-flex;
+}
+
+.filter-btn-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
 .product-card {
     background: var(--white);
     border-radius: 12px;
@@ -483,6 +562,9 @@ body {
     box-shadow: var(--shadow);
     transition: var(--transition);
     cursor: pointer;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
 .product-card:hover {
@@ -503,6 +585,9 @@ body {
 
 .product-body {
     padding: 16px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
 }
 
 .product-badge {
@@ -522,6 +607,11 @@ body {
     font-weight: 600;
     margin-bottom: 8px;
     line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: calc(1.3em * 2);
 }
 
 .product-description {
@@ -529,6 +619,11 @@ body {
     color: var(--text-light);
     margin-bottom: 12px;
     line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: calc(1.4em * 2);
 }
 
 .product-rating {
@@ -548,6 +643,7 @@ body {
     justify-content: space-between;
     align-items: center;
     gap: 10px;
+    margin-top: auto;
 }
 
 .product-price {
@@ -744,6 +840,7 @@ body {
     right: 0;
     width: 400px;
     height: 100vh;
+    height: 100dvh;
     background: var(--white);
     z-index: 150;
     transform: translateX(100%);
@@ -782,10 +879,102 @@ body {
     transform: rotate(90deg);
 }
 
-.cart-items {
+.clear-cart-btn {
+    background: none;
+    border: none;
+    color: var(--text-light);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+}
+
+.clear-cart-btn:hover {
+    color: var(--primary-color);
+}
+
+/* Único container que rola: itens + resumo + formulário, tudo junto — igual ao
+   padrão do iFood. O "flex: 1" faz ele ocupar o espaço entre o header e o footer
+   (que são de altura fixa), e o "min-height: 0" é essencial: sem ele, um item
+   flex dentro de uma coluna flex nunca encolhe abaixo da altura do seu conteúdo,
+   então o overflow ficava "vazando" pra fora do sidebar em vez de rolar.
+*/
+.cart-scroll-body {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
+}
+
+.cart-items {
     padding: 20px;
+}
+
+/* Rodapé com o botão de finalizar — fica fora da área de rolagem, sempre visível */
+.cart-footer {
+    flex-shrink: 0;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border-color);
+    background: var(--white);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+}
+
+/* ===== CARRINHO FLUTUANTE (mobile) =====
+   Barra fixa embaixo da tela, tipo iFood/Rappi: some quando o carrinho está
+   vazio ou quando o carrinho lateral já está aberto (pra não sobrepor o
+   próprio carrinho), e aparece com uma leve animação de subida. */
+.floating-cart-bar {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 140;
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border: none;
+    border-radius: 14px;
+    background: var(--primary-color);
+    color: var(--white);
+    font-family: inherit;
+    cursor: pointer;
+    box-shadow: var(--shadow-lg);
+    transform: translateY(120%);
+    transition: transform 0.25s ease;
+}
+
+.floating-cart-bar.show {
+    display: flex;
+    transform: translateY(0);
+}
+
+.cart-sidebar.active ~ .floating-cart-bar {
+    transform: translateY(120%);
+}
+
+.floating-cart-icon {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.floating-cart-text {
+    flex: 1;
+    text-align: left;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.floating-cart-total {
+    font-size: 15px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+@media (min-width: 769px) {
+    .floating-cart-bar {
+        display: none !important;
+    }
 }
 
 .empty-cart {
@@ -1004,9 +1193,14 @@ body {
 }
 
 /* ========== RESPONSIVO ========== */
+/* CORRIGIDO: essa chave fechava a media query cedo demais (logo depois do
+   .search-input), então tudo daqui pra baixo (hero, products-grid,
+   .cart-sidebar { width: 100% }, modal, etc.) vazava pra FORA da media query
+   e passava a valer sempre, inclusive no desktop — por isso o carrinho lateral
+   ocupava a tela inteira mesmo em telas grandes. Agora é uma media query só. */
 @media (max-width: 768px) {
     .header-content {
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         gap: 10px;
     }
 
@@ -1014,9 +1208,31 @@ body {
         display: none;
     }
 
+    /* Logo + busca lado a lado numa linha só; o botão do carrinho no header
+       vira só o ícone (compacto), porque agora existe também a barra de
+       carrinho flutuante fixa embaixo (.floating-cart-bar) pra abrir o
+       carrinho sem precisar rolar até o topo. */
+    .header-actions {
+        display: contents;
+    }
+
+    .logo {
+        order: 1;
+        flex-shrink: 0;
+    }
+
     .search-input {
-        width: 100%;
-        margin-bottom: 10px;
+        order: 2;
+        flex: 1 1 auto;
+        min-width: 0;
+        width: auto;
+        margin-bottom: 0;
+    }
+
+    .cart-btn {
+        order: 3;
+        flex-shrink: 0;
+        padding: 10px 12px;
     }
 
     .hero-content {
@@ -1048,6 +1264,11 @@ body {
     .modal-content {
         width: 95%;
         max-height: 95vh;
+    }
+
+    /* Dá espaço embaixo pra barra de carrinho flutuante não tampar o footer */
+    body.has-floating-cart .footer {
+        padding-bottom: 76px;
     }
 }
 
