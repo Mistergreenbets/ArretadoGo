@@ -21,7 +21,8 @@
             background: #F4F4F6;
         }
 
-        /* ===== LOGIN (mantido) ===== */
+        /* ===== LOGIN (padrão único usado em todos os painéis — admin, motoboy e super-admin —
+           pra dar a mesma primeira impressão em qualquer área restrita do sistema) ===== */
         .login-screen {
             position: fixed;
             inset: 0;
@@ -32,33 +33,49 @@
                 linear-gradient(180deg, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.85) 60%, #0a0a0a 100%),
                 url('https://rabiscoearte.github.io/MoldesClub/fastfood.png') center center / cover no-repeat;
             z-index: 9999;
+            animation: fadeInBg 0.6s ease;
         }
+
+        @keyframes fadeInBg {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
         .login-box {
             background: rgba(15, 15, 15, 0.82);
             backdrop-filter: blur(6px);
             -webkit-backdrop-filter: blur(6px);
             padding: 44px 40px;
-            border-radius: 20px;
+            border-radius: 10px;
             width: 100%;
             max-width: 380px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.6);
             border: 1px solid rgba(255,255,255,0.08);
+            animation: fadeInCard 0.5s ease 0.15s both;
         }
+
+        @keyframes fadeInCard {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         .login-box h2 { margin: 0 0 8px; text-align: center; color: #fff; }
         .login-box p { margin: 0 0 24px; text-align: center; color: #b3b3b3; font-size: 14px; }
+
         .login-logo {
             display: block;
-            max-width: 180px;
+            max-width: 200px;
             width: 100%;
             height: auto;
             margin: 0 auto 20px;
+            filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
         }
+
         .login-box .form-group label { color: #d9d9d9; font-size: 13px; font-weight: 600; }
         .login-box .input-field {
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.15);
             color: #fff;
-            border-radius: 12px;
         }
         .login-box .input-field::placeholder { color: #8a8a8a; }
         .login-box .input-field:focus {
@@ -67,11 +84,15 @@
             background: rgba(255,255,255,0.1);
             box-shadow: 0 0 0 3px rgba(194, 0, 0, 0.2);
         }
+        .login-box #loginSubmitBtn {
+            margin-top: 8px;
+            letter-spacing: 0.3px;
+        }
         .login-error {
             background: #fdecea;
             color: #b91c1c;
             padding: 10px;
-            border-radius: 10px;
+            border-radius: 6px;
             font-size: 14px;
             margin-bottom: 12px;
         }

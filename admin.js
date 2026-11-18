@@ -4,11 +4,76 @@ let pedidosAdmin = [];
 let unsubscribePedidosAdmin = null;
 let produtoEmEdicao = null;
 let produtoParaDeletar = null;
+let planoAtual = 'basico'; // definido no login, a partir da loja do admin
+
+// Limites por plano — null = sem limite (ilimitado). "cupons" e "relatorios" são
+// funcionalidades on/off, não contagem.
+const PLANOS = {
+    basico:         { produtos: 30,   motoboys: 1,    cupons: false, relatorios: false },
+    intermediario:  { produtos: null, motoboys: 3,    cupons: true,  relatorios: false },
+    premium:        { produtos: null, motoboys: null, cupons: true,  relatorios: true  }
+};
+
+function limitesDoPlano() {
+    return PLANOS[planoAtual] || PLANOS.basico;
+}
+
+// recurso: 'produtos' | 'motoboys'. quantidadeAtual: quantos já existem.
+function limiteAtingido(recurso, quantidadeAtual) {
+    const limite = limitesDoPlano()[recurso];
+    return limite !== null && quantidadeAtual >= limite;
+}
+
+function mensagemLimitePlano(recurso) {
+    const nomes = { produtos: 'produtos', motoboys: 'motoboys' };
+    const limite = limitesDoPlano()[recurso];
+    return `Seu plano atual permite até ${limite} ${nomes[recurso]}. Faça upgrade pra continuar.`;
+}
+
+// Esconde/bloqueia funcionalidades que o plano atual não inclui (cupons, relatórios)
+function aplicarRestricoesDoPlano() {
+    const limites = limitesDoPlano();
+
+    const navCupons = document.querySelector('.nav-item[data-section="cupons"]');
+    if (navCupons) navCupons.style.display = limites.cupons ? '' : 'none';
+
+    const btnRelatorios = document.getElementById('qaRelatorios');
+    if (btnRelatorios) btnRelatorios.style.display = limites.relatorios ? '' : 'none';
+}
+
+// Faixa fixa no topo do painel avisando quantos dias restam de teste grátis, ou se o
+// pagamento venceu. situacaoLoja() vem de firebase-config.js (mesma lógica usada pra
+// decidir se a loja pública fica no ar ou não).
+// IMPORTANTE: o banner entra ANTES do #adminContainer no DOM (como irmão dele), nunca
+// dentro — #adminContainer é um grid de 2 colunas (sidebar | conteúdo), e inserir o
+// banner lá dentro faz ele virar mais uma célula do grid, quebrando o layout inteiro.
+function mostrarBannerSituacaoLoja(loja) {
+    const existente = document.getElementById('bannerSituacaoLoja');
+    if (existente) existente.remove();
+
+    const { texto, vencido } = situacaoLoja(loja);
+    const banner = document.createElement('div');
+    banner.id = 'bannerSituacaoLoja';
+    banner.textContent = vencido
+        ? `⚠️ ${texto} — sua loja está fora do ar pros clientes. Fale com o suporte pra renovar.`
+        : `ℹ️ ${texto}`;
+    banner.style.cssText = `padding:10px 16px; text-align:center; font-size:13px; font-weight:600; color:${vencido ? '#B91C1C' : '#856404'}; background:${vencido ? '#FDECEA' : '#FFF3CD'};`;
+
+    const container = document.getElementById('adminContainer');
+    container.parentNode.insertBefore(banner, container);
+}
 
 // Listas de configuração (sabores de pizza, adicionais e bairros de entrega)
 let saboresPizza = [];
 let adicionaisSanduiche = [];
 let bairrosEntrega = [];
+// Trava de segurança contra perda de dados: os botões do painel (inclusive "Salvar
+// Configurações") ficam clicáveis assim que a página monta, mas os dados reais da loja
+// (bairros, faixas de km, promoções...) só chegam depois de uma chamada assíncrona ao
+// Firestore. Se alguém salvar entre esses dois momentos, salvaria os arrays ainda vazios
+// por cima do que já existia no banco — foi exatamente isso que apagou as faixas de km
+// num teste anterior. salvarConfiguracoes() recusa salvar enquanto isso for false.
+let configuracoesCarregadas = false;
 let promocoes = [];
 let horarioFuncionamento = horarioFuncionamentoPadrao(); // vem de firebase-config.js
 // nomeLojaAtual e apenasNumeros() vêm de pedido-status-utils.js
@@ -75,6 +140,30 @@ async function verificarAutenticacao() {
         }
 
         // Usuário autenticado e autorizado: mostrar painel e carregar dados
+        // Cada admin pertence a UMA loja (admin.lojaId) — define o tenant atual antes de
+        // qualquer chamada que leia/grave produtos, pedidos, cupons, motoboys ou config.
+        if (!admin.lojaId) {
+            await auth.signOut();
+            const errorBox = document.getElementById('loginError');
+            if (errorBox) {
+                errorBox.textContent = 'Este admin não está vinculado a nenhuma loja. Fale com o suporte.';
+                errorBox.style.display = 'block';
+            }
+            return;
+        }
+        definirLojaAtual(admin.lojaId);
+        // O link "Voltar à Loja" apontava pra index.html sem nenhum parâmetro — sem saber
+        // qual loja abrir, a página caía em "loja não encontrada". Agora ele carrega o
+        // slug da loja logada.
+        const linkVoltarLoja = document.getElementById('linkVoltarLoja');
+        if (linkVoltarLoja) linkVoltarLoja.href = `index.html?loja=${encodeURIComponent(admin.lojaId)}`;
+        const lojaAtualDados = await getLojaPorSlug(admin.lojaId);
+        planoAtual = lojaAtualDados?.plano || 'basico';
+        aplicarRestricoesDoPlano();
+        // Banner "Pago até / Teste grátis termina em..." desativado a pedido — a função
+        // mostrarBannerSituacaoLoja() continua acima, intacta, caso queira reativar depois.
+        // mostrarBannerSituacaoLoja(lojaAtualDados);
+
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('adminContainer').style.display = '';
         const userInfo = document.getElementById('userInfo');
@@ -139,6 +228,7 @@ async function carregarPedidosAdmin() {
             pedidosAdmin = pedidos;
             renderizarPedidos();
             renderizarDashboard();
+            renderizarMotoboys();
         });
     } catch (error) {
         console.error('Erro ao carregar pedidos:', error);
@@ -157,6 +247,8 @@ function inicializarEventosAdmin() {
             }
         });
     });
+
+    inicializarEventosCupons();
 
     // Dashboard - ações rápidas
     document.getElementById('qaVerPedidos')?.addEventListener('click', () => mudarSecao('pedidos'));
@@ -215,6 +307,8 @@ function inicializarEventosAdmin() {
         salvarConfiguracoes();
     });
 
+    document.getElementById('salvarPagamentoOnlineBtn')?.addEventListener('click', salvarPagamentoOnline);
+
     document.getElementById('addSaborBtn')?.addEventListener('click', adicionarSabor);
     document.getElementById('novoSaborInput')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); adicionarSabor(); }
@@ -226,6 +320,8 @@ function inicializarEventosAdmin() {
     });
 
     document.getElementById('addBairroBtn')?.addEventListener('click', adicionarBairro);
+    document.getElementById('usarLocalizacaoBtn')?.addEventListener('click', usarLocalizacaoAtual);
+    document.getElementById('gerarBancoRuasBtn')?.addEventListener('click', gerarBancoRuasAutomatico);
     document.getElementById('novoBairroTaxa')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); adicionarBairro(); }
     });
@@ -237,6 +333,7 @@ function inicializarEventosAdmin() {
 
     // Motoboys
     document.getElementById('novoMotoboyForm')?.addEventListener('submit', cadastrarMotoboy);
+    document.getElementById('novaCozinhaForm')?.addEventListener('submit', cadastrarCozinha);
 
     // Delete confirmação
     document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
@@ -252,10 +349,31 @@ function inicializarEventosAdmin() {
         fecharModal('productFormModal');
     });
 
-    // Sidebar responsivo
+    // Sidebar responsivo — abrir (botão no cabeçalho, só existe/aparece no mobile)
+    document.getElementById('abrirSidebarBtn')?.addEventListener('click', () => {
+        document.querySelector('.sidebar').classList.add('active');
+        document.getElementById('sidebarBackdrop')?.classList.add('active');
+    });
+
+    // Fechar (botão de dentro da sidebar, o mesmo de antes)
     document.getElementById('toggleSidebar')?.addEventListener('click', () => {
-        document.querySelector('.sidebar').classList.toggle('active');
-        document.getElementById('overlay').classList.toggle('active');
+        document.querySelector('.sidebar').classList.remove('active');
+        document.getElementById('sidebarBackdrop')?.classList.remove('active');
+    });
+
+    // Fechar tocando fora (no fundo escurecido)
+    document.getElementById('sidebarBackdrop')?.addEventListener('click', () => {
+        document.querySelector('.sidebar').classList.remove('active');
+        document.getElementById('sidebarBackdrop')?.classList.remove('active');
+    });
+
+    // Fechar automaticamente ao escolher uma seção no menu — sem isso, o admin teria
+    // que fechar manualmente toda vez que trocasse de aba no mobile
+    document.querySelectorAll('.sidebar-nav .nav-item[data-section]').forEach(item => {
+        item.addEventListener('click', () => {
+            document.querySelector('.sidebar').classList.remove('active');
+            document.getElementById('sidebarBackdrop')?.classList.remove('active');
+        });
     });
 
     // Overlay
@@ -289,6 +407,13 @@ function mudarSecao(secao) {
     // Mostrar seção ativa
     document.getElementById(secao + 'Section').style.display = 'block';
     document.querySelector(`[data-section="${secao}"]`)?.classList.add('active');
+
+    // Status online/offline só é buscado uma vez (não é tempo real como os pedidos),
+    // então recarrega ao entrar na aba pra não mostrar informação desatualizada.
+    if (secao === 'motoboys') carregarMotoboys();
+    if (secao === 'cozinha') carregarCozinha();
+    if (secao === 'cupons') carregarCupons();
+    if (secao === 'clientes') carregarClientes();
 }
 
 // ========== PRODUTOS - RENDERIZAR TABELA ==========
@@ -393,6 +518,11 @@ function editarProduto(produtoId) {
 
 // ========== PRODUTOS - SALVAR ==========
 async function salvarProduto() {
+    if (!produtoEmEdicao && limiteAtingido('produtos', produtosAdmin.length)) {
+        showToast(mensagemLimitePlano('produtos'), 'error');
+        return;
+    }
+
     const nome = document.getElementById('productName').value.trim();
     const categoria = document.getElementById('productCategory').value;
     const preco = parseFloat(document.getElementById('productPrice').value);
@@ -649,12 +779,33 @@ function limparFormProduto() {
 
 // ========== PEDIDOS ==========
 // STATUS_PEDIDO, MENSAGENS_STATUS, apenasNumeros, montarLinkWhatsAppStatus e
-// enviarAtualizacaoWhatsApp agora vêm de pedido-status-utils.js (compartilhado com motoboy.js)
+// enviarAtualizacaoWhatsApp vêm de pedido-status-utils.js (compartilhado com motoboy.js).
+// O admin não dispara mais mensagem de status pro WhatsApp do cliente a cada mudança —
+// agora o cliente acompanha tudo pela página de rastreio (linkRastreio, enviado só uma vez
+// na confirmação do pedido). Se o painel do motoboy ainda chamar enviarAtualizacaoWhatsApp
+// em pedido-status-utils.js/motoboy.js, isso precisa ser removido lá também.
 
 // Texto amigável da forma de pagamento (mesmos valores salvos pelo checkout em app.js)
 function formatarFormaPagamentoAdmin(metodo) {
     const labels = { pix: '📱 Pix', credito: '💳 Crédito', debito: '💳 Débito', dinheiro: '💵 Dinheiro' };
     return labels[metodo] || metodo;
+}
+
+// Enquanto o pedido está "pendente", a cozinha ainda nem confirmou o preparo — não faz
+// sentido (e evita erro do admin) pular direto pra "Saiu para Entrega" ou "Entregue" sem
+// o pedido ter passado por "Preparando" e depois "Pronto para Retirada" primeiro. Esse
+// último é quem sinaliza pro motoboy que já pode buscar (ver motoboy.js) — por isso nem
+// de "preparando" dá pra pular direto pra "saiu_entrega" sem passar por "pronto". A partir
+// de "pronto" em diante, o admin já pode mover livremente entre os status (inclusive
+// corrigir um engano).
+function opcoesStatusPermitidas(statusAtual) {
+    if (statusAtual === 'pendente') {
+        return STATUS_PEDIDO.filter(s => ['pendente', 'preparando', 'cancelado'].includes(s.valor));
+    }
+    if (statusAtual === 'preparando') {
+        return STATUS_PEDIDO.filter(s => ['preparando', 'pronto', 'cancelado'].includes(s.valor));
+    }
+    return STATUS_PEDIDO;
 }
 
 function renderizarPedidos() {
@@ -669,12 +820,13 @@ function renderizarPedidos() {
 
     pedidosAdmin.forEach(pedido => {
         const card = document.createElement('div');
-        card.className = 'order-card';
+        const notaBaixa = pedido.avaliacao && pedido.avaliacao.nota <= 2;
+        card.className = 'order-card' + (notaBaixa ? ' order-card-alerta' : '');
         
         let itensHtml = '';
         if (Array.isArray(pedido.itens)) {
             itensHtml = pedido.itens.map(item => 
-                `${item.quantidade}x ${item.nome}`
+                `${item.quantidade}x ${escaparHtml(item.nome)}`
             ).join(', ');
         }
 
@@ -687,9 +839,17 @@ function renderizarPedidos() {
         });
 
         const statusAtual = pedido.status || 'pendente';
-        const opcoesStatus = STATUS_PEDIDO.map(s =>
+        const opcoesStatus = opcoesStatusPermitidas(statusAtual).map(s =>
             `<option value="${s.valor}" ${s.valor === statusAtual ? 'selected' : ''}>${s.label}</option>`
         ).join('');
+
+        // Estrelas cheias/vazias conforme a nota — "★★★★☆" pra nota 4, por exemplo.
+        const avaliacaoHtml = pedido.avaliacao ? `
+            <div class="order-avaliacao">
+                <span class="order-avaliacao-estrelas">${'★'.repeat(pedido.avaliacao.nota)}${'☆'.repeat(5 - pedido.avaliacao.nota)}</span>
+                ${notaBaixa ? '<span class="order-avaliacao-nota-baixa">⚠️ Nota baixa</span>' : ''}
+                ${pedido.avaliacao.comentario ? `<span class="order-avaliacao-comentario">“${escaparHtml(pedido.avaliacao.comentario)}”</span>` : ''}
+            </div>` : '';
 
         card.innerHTML = `
             <div class="order-header">
@@ -697,81 +857,60 @@ function renderizarPedidos() {
                 <span class="order-date">${dataFormatada}</span>
             </div>
             <div class="order-details">
-                <strong>Cliente:</strong> ${pedido.nome}<br>
-                <strong>Telefone:</strong> ${pedido.telefone}<br>
+                <strong>Cliente:</strong> ${escaparHtml(pedido.nome)}<br>
+                <strong>Telefone:</strong> ${escaparHtml(pedido.telefone)}<br>
                 <strong>Itens:</strong> ${itensHtml}<br>
                 <strong>Total:</strong> R$ ${pedido.total?.toFixed(2) || '0.00'}<br>
                 <strong>Tipo:</strong> ${pedido.tipoEntrega === 'delivery' ? '🚗 Delivery' : '🏪 Retirada'}
-                ${pedido.endereco ? `<br><strong>Endereço:</strong> ${pedido.endereco}` : ''}
+                ${pedido.endereco ? `<br><strong>Endereço:</strong> ${escaparHtml(pedido.endereco)}` : ''}
                 ${pedido.formaPagamento ? `<br><strong>Pagamento:</strong> ${formatarFormaPagamentoAdmin(pedido.formaPagamento)}${pedido.formaPagamento === 'dinheiro' && pedido.trocoPara ? ` (troco p/ R$ ${Number(pedido.trocoPara).toFixed(2)})` : ''}` : ''}
             </div>
+            ${avaliacaoHtml}
             <div class="order-status-row">
                 <label><strong>Status:</strong></label>
                 <select class="filter-select order-status-select" data-pedido-id="${pedido.id}">
                     ${opcoesStatus}
                 </select>
-                <button type="button" class="btn btn-secondary btn-send-whatsapp" title="Reenviar mensagem de status pro cliente">📲 Enviar WhatsApp</button>
             </div>
         `;
 
         card.querySelector('.order-status-select').addEventListener('change', (e) => {
-            // Abre a aba já no clique/troca (evento do usuário) pra não ser bloqueada pelo navegador
-            const abaWhatsApp = window.open('', '_blank');
-            atualizarStatusPedido(pedido.id, e.target.value, abaWhatsApp);
-        });
-
-        card.querySelector('.btn-send-whatsapp').addEventListener('click', () => {
-            const pedidoAtual = pedidosAdmin.find(p => p.id === pedido.id) || pedido;
-            enviarAtualizacaoWhatsApp(pedidoAtual, pedidoAtual.status || 'pendente');
+            atualizarStatusPedido(pedido.id, e.target.value);
         });
 
         container.appendChild(card);
     });
 }
 
-async function atualizarStatusPedido(pedidoId, novoStatus, abaWhatsApp) {
+async function atualizarStatusPedido(pedidoId, novoStatus) {
     try {
-        await updatePedidoStatus(pedidoId, novoStatus);
+        // Baixa/estorno de estoque agora roda dentro de updatePedidoStatus (firebase-config.js) —
+        // funciona igual se for o admin ou o motoboy que mudar o status.
+        const resultado = await updatePedidoStatus(pedidoId, novoStatus);
 
-        // Baixa/estorno de estoque: assim que o pedido sai de "pendente" (confirmado), os itens saem
-        // do estoque (produtos com controlaEstoque = true) e entram na contagem de vendidos (todos os
-        // itens). Se o pedido for cancelado depois de já confirmado, o estoque volta (estorno).
-        // Tudo isso é idempotente (a flag estoqueProcessado no pedido evita descontar 2x).
-        try {
-            const statusNormalizado = (novoStatus || '').toLowerCase();
-            if (statusNormalizado.includes('cancel')) {
-                await estornarBaixaEstoquePedido(pedidoId);
-            } else if (statusNormalizado !== 'pendente') {
-                const resultado = await processarBaixaEstoquePedido(pedidoId);
-                if (resultado?.itensComEstoqueInsuficiente?.length > 0) {
-                    const lista = resultado.itensComEstoqueInsuficiente
-                        .map(i => `${i.nome} (faltaram ${i.faltavam})`)
-                        .join(', ');
-                    showToast(`⚠️ Estoque insuficiente pra: ${lista}. Provavelmente houve venda duplicada — confira com o cliente!`, 'error');
-                }
-            }
-            await carregarProdutosAdmin();
-            renderizarTabelaProdutos();
-        } catch (erroEstoque) {
-            console.error('Erro ao atualizar estoque do pedido:', erroEstoque);
-            showToast('Status do pedido atualizado, mas houve um erro ao ajustar o estoque', 'error');
+        if (resultado?.resultadoEstoque?.itensComEstoqueInsuficiente?.length > 0) {
+            const lista = resultado.resultadoEstoque.itensComEstoqueInsuficiente
+                .map(i => `${i.nome} (faltaram ${i.faltavam})`)
+                .join(', ');
+            showToast(`⚠️ Estoque insuficiente pra: ${lista}. Provavelmente houve venda duplicada — confira com o cliente!`, 'error');
         }
+        await carregarProdutosAdmin();
+        renderizarTabelaProdutos();
 
         const pedido = pedidosAdmin.find(p => p.id === pedidoId);
         if (pedido) {
             pedido.status = novoStatus;
-            enviarAtualizacaoWhatsApp(pedido, novoStatus, abaWhatsApp);
         }
-        showToast('Status atualizado! Mensagem pronta no WhatsApp — é só clicar em enviar 📲', 'success');
+        showToast('Status atualizado! O cliente já vê a mudança na página de rastreio dele.', 'success');
     } catch (error) {
         console.error('Erro ao atualizar status:', error);
         showToast('Erro ao atualizar status do pedido', 'error');
-        abaWhatsApp?.close?.();
     }
 }
 
 // ========== MOTOBOYS ==========
 let motoboysAdmin = [];
+let cozinhaAdmin = [];
 
 async function carregarMotoboys() {
     try {
@@ -780,6 +919,42 @@ async function carregarMotoboys() {
     } catch (error) {
         console.error('Erro ao carregar motoboys:', error);
     }
+}
+
+// Calcula, a partir dos pedidos já carregados em memória (pedidosAdmin), as
+// estatísticas de HOJE de um motoboy específico — sem precisar de nenhuma
+// consulta extra ao Firestore, já que pedidosAdmin é atualizado em tempo real.
+function calcularEstatisticasMotoboy(uid) {
+    const paraData = (timestamp) => {
+        if (!timestamp) return null;
+        return typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
+    };
+
+    const agora = new Date();
+    const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+
+    const entreguesHoje = pedidosAdmin.filter(p => {
+        if (p.motoboyId !== uid || p.status !== 'entregue') return false;
+        const d = paraData(p.entregueEm);
+        return d && d >= inicioHoje;
+    });
+
+    const totalTaxasHoje = entreguesHoje.reduce((soma, p) => soma + (Number(p.taxaEntrega) || 0), 0);
+
+    let tempoMedioTexto = '—';
+    if (entreguesHoje.length > 0) {
+        const somaMinutos = entreguesHoje.reduce((soma, p) => {
+            const criado = paraData(p.criadoEm);
+            const entregue = paraData(p.entregueEm);
+            if (!criado || !entregue) return soma;
+            return soma + Math.max(0, (entregue - criado) / 60000);
+        }, 0);
+        tempoMedioTexto = `${Math.round(somaMinutos / entreguesHoje.length)} min`;
+    }
+
+    const emRota = pedidosAdmin.find(p => p.motoboyId === uid && p.status === 'saiu_entrega') || null;
+
+    return { entregasHoje: entreguesHoje.length, totalTaxasHoje, tempoMedioTexto, emRota };
 }
 
 function renderizarMotoboys() {
@@ -795,15 +970,38 @@ function renderizarMotoboys() {
 
     motoboysAdmin.forEach(motoboy => {
         const ativo = motoboy.ativo !== false;
+        const online = motoboy.online !== false; // mesmo default usado em motoboy.js
+        const stats = calcularEstatisticasMotoboy(motoboy.uid);
+
         const item = document.createElement('div');
         item.className = 'motoboy-item';
         item.innerHTML = `
-            <div class="motoboy-info">
-                <strong>${motoboy.nome}</strong>
-                <small>${motoboy.email}</small>
+            <div class="motoboy-item-header">
+                <div class="motoboy-info">
+                    <strong>${escaparHtml(motoboy.nome)}</strong>
+                    <small>${escaparHtml(motoboy.email)}</small>
+                </div>
+                <div class="motoboy-badges">
+                    <span class="motoboy-status-badge ${ativo ? 'ativo' : 'inativo'}">${ativo ? 'Ativo' : 'Inativo'}</span>
+                    ${ativo ? `<span class="motoboy-online-badge ${online ? 'online' : 'offline'}">${online ? '🟢 Online' : '⚪ Offline'}</span>` : ''}
+                </div>
+                <button type="button" class="btn btn-secondary toggle-motoboy-btn">${ativo ? 'Desativar' : 'Reativar'}</button>
             </div>
-            <span class="motoboy-status-badge ${ativo ? 'ativo' : 'inativo'}">${ativo ? 'Ativo' : 'Inativo'}</span>
-            <button type="button" class="btn btn-secondary toggle-motoboy-btn">${ativo ? 'Desativar' : 'Reativar'}</button>
+            <div class="motoboy-mini-stats">
+                <div class="motoboy-mini-stat mini-stat-pedidos">
+                    <span class="motoboy-mini-stat-label">🚚 Entregas hoje</span>
+                    <span class="motoboy-mini-stat-value">${stats.entregasHoje}</span>
+                </div>
+                <div class="motoboy-mini-stat mini-stat-faturamento">
+                    <span class="motoboy-mini-stat-label">💰 Taxas hoje</span>
+                    <span class="motoboy-mini-stat-value">${formatarMoeda(stats.totalTaxasHoje)}</span>
+                </div>
+                <div class="motoboy-mini-stat mini-stat-tempo">
+                    <span class="motoboy-mini-stat-label">⏱️ Tempo médio</span>
+                    <span class="motoboy-mini-stat-value">${stats.tempoMedioTexto}</span>
+                </div>
+            </div>
+            ${stats.emRota ? `<div class="motoboy-em-rota">📦 Em rota agora — pedido #${escaparHtml(stats.emRota.codigoPedido || stats.emRota.id.substring(0, 8).toUpperCase())}</div>` : ''}
         `;
         item.querySelector('.toggle-motoboy-btn').addEventListener('click', () => {
             alternarStatusMotoboy(motoboy.uid, !ativo);
@@ -825,6 +1023,11 @@ async function cadastrarMotoboy(e) {
         return;
     }
 
+    if (limiteAtingido('motoboys', motoboysAdmin.length)) {
+        showToast(mensagemLimitePlano('motoboys'), 'error');
+        return;
+    }
+
     btn.disabled = true;
     btn.textContent = 'Cadastrando...';
 
@@ -836,9 +1039,9 @@ async function cadastrarMotoboy(e) {
     } catch (error) {
         console.error('Erro ao cadastrar motoboy:', error);
         if (error.code === 'auth/email-already-in-use') {
-            showToast('Esse e-mail já está cadastrado', 'error');
+            showToast('Esse e-mail já tem conta. Se você já tentou cadastrar ele antes e deu erro, pode ter ficado uma conta "órfã" — apague-a em Firebase Console → Authentication e tente de novo.', 'error');
         } else {
-            showToast('Erro ao cadastrar motoboy', 'error');
+            showToast(traduzirErroFirebaseComum(error), 'error');
         }
     } finally {
         btn.disabled = false;
@@ -857,6 +1060,101 @@ async function alternarStatusMotoboy(uid, novoValorAtivo) {
     }
 }
 
+// ========== COZINHA ==========
+async function carregarCozinha() {
+    try {
+        cozinhaAdmin = await getAllCozinha();
+        renderizarCozinha();
+    } catch (error) {
+        console.error('Erro ao carregar equipe da cozinha:', error);
+    }
+}
+
+function renderizarCozinha() {
+    const container = document.getElementById('cozinhaListaAdmin');
+    if (!container) return;
+
+    if (cozinhaAdmin.length === 0) {
+        container.innerHTML = '<p style="text-align:center; padding: 16px; color:#888;">Ninguém cadastrado na cozinha ainda.</p>';
+        return;
+    }
+
+    container.innerHTML = '';
+
+    cozinhaAdmin.forEach(funcionario => {
+        const ativo = funcionario.ativo !== false;
+
+        // Reaproveita as mesmas classes CSS de "motoboy-item" (já estilizadas no
+        // admin-style.css) — sem os pedaços que só fazem sentido pra motoboy
+        // (online/offline, estatísticas de entrega).
+        const item = document.createElement('div');
+        item.className = 'motoboy-item';
+        item.innerHTML = `
+            <div class="motoboy-item-header">
+                <div class="motoboy-info">
+                    <strong>${escaparHtml(funcionario.nome)}</strong>
+                    <small>${escaparHtml(funcionario.email)}</small>
+                </div>
+                <div class="motoboy-badges">
+                    <span class="motoboy-status-badge ${ativo ? 'ativo' : 'inativo'}">${ativo ? 'Ativo' : 'Inativo'}</span>
+                </div>
+                <button type="button" class="btn btn-secondary toggle-cozinha-btn">${ativo ? 'Desativar' : 'Reativar'}</button>
+            </div>
+        `;
+        item.querySelector('.toggle-cozinha-btn').addEventListener('click', () => {
+            alternarStatusCozinha(funcionario.uid, !ativo);
+        });
+        container.appendChild(item);
+    });
+}
+
+async function cadastrarCozinha(e) {
+    e.preventDefault();
+
+    const nome = document.getElementById('cozinhaNome').value.trim();
+    const email = document.getElementById('cozinhaEmail').value.trim();
+    const senha = document.getElementById('cozinhaSenha').value;
+    const btn = document.getElementById('addCozinhaBtn');
+
+    if (!nome || !email || senha.length < 6) {
+        showToast('Preencha nome, e-mail e uma senha com pelo menos 6 caracteres', 'error');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Cadastrando...';
+
+    try {
+        await criarCozinha(nome, email, senha);
+        showToast('Funcionário da cozinha cadastrado com sucesso!', 'success');
+        document.getElementById('novaCozinhaForm').reset();
+        await carregarCozinha();
+    } catch (error) {
+        console.error('Erro ao cadastrar cozinha:', error);
+        if (error.code === 'auth/email-already-in-use') {
+            showToast('Esse e-mail já tem conta. Se você já tentou cadastrar ele antes e deu erro, pode ter ficado uma conta "órfã" — apague-a em Firebase Console → Authentication e tente de novo.', 'error');
+        } else {
+            // Mostra o motivo real (ex: timeout do App Check, permission-denied) em vez de
+            // um "erro genérico" que escondia o que estava de fato travando o cadastro.
+            showToast(traduzirErroFirebaseComum(error), 'error');
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '+ Cadastrar na Cozinha';
+    }
+}
+
+async function alternarStatusCozinha(uid, novoValorAtivo) {
+    try {
+        await definirStatusCozinha(uid, novoValorAtivo);
+        showToast(novoValorAtivo ? 'Acesso reativado' : 'Acesso desativado', 'success');
+        await carregarCozinha();
+    } catch (error) {
+        console.error('Erro ao atualizar funcionário da cozinha:', error);
+        showToast('Erro ao atualizar funcionário da cozinha', 'error');
+    }
+}
+
 // ========== CONFIGURAÇÕES ==========
 async function carregarConfiguracoes() {
     try {
@@ -865,15 +1163,31 @@ async function carregarConfiguracoes() {
         if (config) {
             nomeLojaAtual = config.nome || 'ArretadoGo';
             document.getElementById('storeName').value = config.nome || 'ArretadoGo';
+            document.getElementById('storeLogoUrl').value = config.logoUrl || '';
+            document.getElementById('storeGreeting').value = config.saudacao || `Olá 👋, ${config.nome || 'ArretadoGo'}`;
             document.getElementById('storePhone').value = config.telefone || '';
             document.getElementById('deliveryFee').value = config.taxaEntrega || '5.00';
             document.getElementById('deliveryTime').value = config.tempoEntrega || '30';
             document.getElementById('minimumOrder').value = config.pedidoMinimo || '20.00';
 
+            const redesSociais = config.redesSociais || {};
+            document.getElementById('socialFacebook').value = redesSociais.facebook || '';
+            document.getElementById('socialInstagram').value = redesSociais.instagram || '';
+
             saboresPizza = Array.isArray(config.saboresPizza) ? config.saboresPizza : [];
             adicionaisSanduiche = Array.isArray(config.adicionaisSanduiche) ? config.adicionaisSanduiche : [];
             bairrosEntrega = Array.isArray(config.bairrosEntrega) ? config.bairrosEntrega : [];
             promocoes = Array.isArray(config.promocoes) ? config.promocoes : [];
+
+            const calculoKm = config.calculoPorKm || {};
+            document.getElementById('calculoKmAtivo').checked = calculoKm.ativo === true;
+            document.getElementById('lojaLat').value = calculoKm.lojaLat ?? '';
+            document.getElementById('lojaLng').value = calculoKm.lojaLng ?? '';
+            document.getElementById('lojaCidadeUf').value = calculoKm.cidadeUf || '';
+            document.getElementById('valorPorKm').value = calculoKm.valorPorKm ?? '';
+            document.getElementById('taxaMinimaKm').value = calculoKm.taxaMinima ?? '6.00';
+            document.getElementById('provedorGeocoding').value = calculoKm.provedor || 'nominatim';
+            document.getElementById('googleApiKey').value = calculoKm.googleApiKey || '';
 
             const horarioSalvo = config.horarioFuncionamento;
             const horarioBase = horarioFuncionamentoPadrao();
@@ -902,7 +1216,18 @@ async function carregarConfiguracoes() {
             document.getElementById('heroStat2Label').value = stats[1].label || '';
             document.getElementById('heroStat3Valor').value = stats[2].valor || '';
             document.getElementById('heroStat3Label').value = stats[2].label || '';
+
+            const pagamentoOnline = config.pagamentoOnline || {};
+            document.getElementById('pagamentoOnlineAtivo').checked = pagamentoOnline.ativo === true;
+
+            const fidelidade = config.fidelidade || {};
+            document.getElementById('fidelidadeAtivo').checked = fidelidade.ativo === true;
+            document.getElementById('fidelidadePedidos').value = fidelidade.pedidosNecessarios || 10;
+            document.getElementById('fidelidadeValorMinimo').value = fidelidade.valorMinimo ?? 65;
+            document.getElementById('fidelidadeDesconto').value = fidelidade.desconto || 25;
         }
+
+        carregarStatusTokenPagamento();
 
         renderizarSaboresPizza();
         renderizarAdicionais();
@@ -910,8 +1235,13 @@ async function carregarConfiguracoes() {
         renderizarPromocoes();
         renderizarHorarioDias();
         renderizarDashboard();
+        carregarStatusBancoRuas();
+        // Só a partir daqui é seguro salvar — os arrays em memória agora refletem o
+        // banco de verdade, não mais os valores padrão vazios da declaração inicial.
+        configuracoesCarregadas = true;
     } catch (error) {
         console.error('Erro ao carregar configurações:', error);
+        showToast('Erro ao carregar configurações da loja — recarregue a página antes de salvar', 'error');
     }
 }
 
@@ -1067,6 +1397,172 @@ function adicionarBairro() {
     renderizarBairros();
 }
 
+// Preenche lat/lng automaticamente com a localização do dispositivo (útil pra pegar a
+// coordenada da própria loja sem precisar procurar no Google Maps manualmente).
+function usarLocalizacaoAtual() {
+    const statusEl = document.getElementById('localizacaoStatus');
+    if (!navigator.geolocation) {
+        statusEl.textContent = 'Seu navegador não suporta localização automática — preencha manualmente.';
+        return;
+    }
+
+    statusEl.textContent = '📍 Obtendo localização...';
+    navigator.geolocation.getCurrentPosition(
+        (posicao) => {
+            document.getElementById('lojaLat').value = posicao.coords.latitude.toFixed(6);
+            document.getElementById('lojaLng').value = posicao.coords.longitude.toFixed(6);
+            statusEl.textContent = '✅ Localização preenchida. Confira se corresponde ao endereço da loja.';
+        },
+        () => {
+            statusEl.textContent = '⚠️ Não foi possível obter sua localização — preencha manualmente.';
+        }
+    );
+}
+
+// ========== BANCO DE RUAS (prévia de endereço) ==========
+// Monta a consulta Overpass a partir da lat/lng da loja (já preenchidas acima) + raio
+// escolhido: busca toda via ("way") com nome, num raio em volta da loja.
+function montarConsultaOverpass(lat, lng, raioKm) {
+    const raioMetros = Math.round(raioKm * 1000);
+    return `[out:json][timeout:60];\nway\n  ["highway"]\n  ["name"]\n  (around:${raioMetros},${lat},${lng});\nout tags center;`;
+}
+
+// Mais de um servidor público roda a Overpass API com os mesmos dados — se o principal
+// estiver sobrecarregado/fora do ar, tenta o espelho antes de desistir. Todos liberam CORS
+// pra chamada direta do navegador (ver https://dev.overpass-api.de/command_line.html).
+const SERVIDORES_OVERPASS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+];
+
+async function consultarOverpassComFallback(consulta) {
+    let ultimoErro = null;
+
+    for (const url of SERVIDORES_OVERPASS) {
+        try {
+            const controlador = new AbortController();
+            const timeoutId = setTimeout(() => controlador.abort(), 60000); // 60s por servidor
+
+            const urlCompleta = `${url}?data=${encodeURIComponent(consulta)}`;
+            const resposta = await fetch(urlCompleta, { signal: controlador.signal });
+            clearTimeout(timeoutId);
+
+            if (!resposta.ok) {
+                const corpo = await resposta.text().catch(() => '(sem corpo)');
+                throw new Error(`${url} respondeu HTTP ${resposta.status}: ${corpo.slice(0, 200)}`);
+            }
+            return await resposta.json();
+        } catch (error) {
+            console.warn(`Overpass falhou em ${url}:`, error.name, error.message);
+            ultimoErro = error;
+            // Tenta o próximo servidor da lista, se houver.
+        }
+    }
+
+    throw ultimoErro || new Error('Todos os servidores Overpass falharam');
+}
+
+// A própria Overpass API libera chamada direta do navegador (CORS oficial, ver
+// https://dev.overpass-api.de/command_line.html) — por isso dá pra gerar o banco de ruas
+// inteiro com UM clique, sem o lojista precisar exportar/importar nada manualmente.
+async function gerarBancoRuasAutomatico() {
+    const lat = parseFloat(document.getElementById('lojaLat').value);
+    const lng = parseFloat(document.getElementById('lojaLng').value);
+    const raioKm = parseFloat(document.getElementById('raioBancoRuas').value) || 15;
+    const statusEl = document.getElementById('statusBancoRuas');
+    const botao = document.getElementById('gerarBancoRuasBtn');
+
+    if (isNaN(lat) || isNaN(lng)) {
+        showToast('⚠️ Preencha a latitude/longitude da loja antes de gerar o banco de ruas', 'error');
+        return;
+    }
+
+    const consulta = montarConsultaOverpass(lat, lng, raioKm);
+    botao.disabled = true;
+    statusEl.textContent = '⏳ Buscando ruas num raio de ' + raioKm + 'km... isso pode levar até 40 segundos.';
+
+    try {
+        const dados = await consultarOverpassComFallback(consulta);
+        const ruas = normalizarRuasOverpass(dados);
+
+        if (!ruas.length) {
+            statusEl.textContent = '⚠️ Nenhuma rua encontrada nesse raio — confira as coordenadas da loja.';
+            showToast('Nenhuma rua encontrada', 'error');
+            return;
+        }
+
+        const tamanhoKB = Math.round(new Blob([JSON.stringify(ruas)]).size / 1024);
+        if (tamanhoKB > 900) {
+            showToast(`⚠️ Banco de ${tamanhoKB}KB está grande — considere um raio menor`, 'error');
+        }
+
+        await salvarBancoRuas(ruas, raioKm);
+        statusEl.textContent = `✅ ${ruas.length} ruas cadastradas (${tamanhoKB}KB) — gerado agora`;
+        showToast(`Banco de ruas gerado: ${ruas.length} ruas`, 'success');
+    } catch (error) {
+        // Log detalhado pro DevTools (F12 → Console) — útil no PC.
+        console.error('Erro ao gerar banco de ruas — detalhe técnico:', error);
+
+        // E também na tela, pra dar pra diagnosticar direto pelo celular, sem precisar
+        // de DevTools nem de PC — só printar a tela já mostra a causa real.
+        const detalheTecnico = (error?.message || String(error)).slice(0, 200);
+        const motivo = error.name === 'AbortError'
+            ? 'A consulta demorou demais (tente um raio menor).'
+            : `Não foi possível gerar agora. Detalhe: ${detalheTecnico}`;
+        statusEl.textContent = `❌ ${motivo}`;
+        showToast('Erro ao gerar banco de ruas', 'error');
+    } finally {
+        botao.disabled = false;
+    }
+}
+
+// Agrupa por nome de rua (uma via costuma virar vários trechos/"ways" no OSM) e tira a
+// média das coordenadas de cada grupo, gerando um ponto de referência único por rua.
+function normalizarRuasOverpass(dadosOverpass) {
+    const elements = Array.isArray(dadosOverpass?.elements) ? dadosOverpass.elements : [];
+    const grupos = new Map();
+
+    for (const el of elements) {
+        const nome = el.tags?.name?.trim();
+        const center = el.center;
+        if (!nome || !center) continue;
+
+        if (!grupos.has(nome)) grupos.set(nome, { latSoma: 0, lngSoma: 0, n: 0 });
+        const g = grupos.get(nome);
+        g.latSoma += center.lat;
+        g.lngSoma += (center.lon ?? center.lng ?? 0);
+        g.n += 1;
+    }
+
+    const ruas = [];
+    for (const [nome, g] of grupos) {
+        ruas.push({
+            nome,
+            lat: Math.round((g.latSoma / g.n) * 1e5) / 1e5,
+            lng: Math.round((g.lngSoma / g.n) * 1e5) / 1e5
+        });
+    }
+    ruas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    return ruas;
+}
+
+// Mostra o status do banco de ruas já salvo (se houver) ao abrir a aba de configurações.
+async function carregarStatusBancoRuas() {
+    const statusEl = document.getElementById('statusBancoRuas');
+    if (!statusEl) return;
+    try {
+        const dados = await buscarBancoRuas();
+        if (!dados) {
+            statusEl.textContent = 'Nenhum banco de ruas gerado ainda.';
+            return;
+        }
+        const data = dados.geradoEm?.toDate ? dados.geradoEm.toDate().toLocaleDateString('pt-BR') : '—';
+        statusEl.textContent = `✅ ${dados.totalRuas || dados.ruas?.length || 0} ruas cadastradas (gerado em ${data})`;
+    } catch (error) {
+        console.error('Erro ao carregar status do banco de ruas:', error);
+    }
+}
+
 // ========== BANNER ROTATIVO DE PROMOÇÕES ==========
 function renderizarPromocoes() {
     const container = document.getElementById('promocoesList');
@@ -1087,19 +1583,23 @@ function renderizarPromocoes() {
                 <button type="button" class="remove-item-btn" title="Remover">🗑️</button>
             </div>
         `;
-        row.querySelector('.promo-toggle-btn').addEventListener('click', () => {
+        // Ativar/desativar e remover promoção salvam na hora — não dependem do admin
+        // lembrar de clicar em "Salvar Configurações" separadamente lá embaixo.
+        row.querySelector('.promo-toggle-btn').addEventListener('click', async () => {
             promo.ativo = !promo.ativo;
             renderizarPromocoes();
+            await salvarConfiguracoes({ silencioso: true });
         });
-        row.querySelector('.remove-item-btn').addEventListener('click', () => {
+        row.querySelector('.remove-item-btn').addEventListener('click', async () => {
             promocoes = promocoes.filter(p => p.id !== promo.id);
             renderizarPromocoes();
+            await salvarConfiguracoes({ silencioso: true });
         });
         container.appendChild(row);
     });
 }
 
-function adicionarPromocao() {
+async function adicionarPromocao() {
     const tituloInput = document.getElementById('novaPromocaoTitulo');
     const imagemInput = document.getElementById('novaPromocaoImagem');
     const descricaoInput = document.getElementById('novaPromocaoDescricao');
@@ -1118,18 +1618,61 @@ function adicionarPromocao() {
     imagemInput.value = '';
     descricaoInput.value = '';
     renderizarPromocoes();
+    // Salva na hora — a promoção já aparece na loja sem precisar clicar em "Salvar
+    // Configurações" separadamente (esse clique extra era o motivo do banner "não mudar").
+    await salvarConfiguracoes();
 }
 
-async function salvarConfiguracoes() {
+async function salvarConfiguracoes(opcoes = {}) {
+    const silencioso = opcoes.silencioso === true;
+
+    // Trava de segurança: nunca salvar por cima de dados que ainda não terminaram de
+    // carregar (ver comentário na declaração de configuracoesCarregadas). Sem essa trava,
+    // salvar cedo demais apaga silenciosamente bairros/faixas de km/promoções já salvos.
+    if (!configuracoesCarregadas) {
+        showToast('⏳ Ainda carregando os dados da loja — aguarde um instante e tente salvar de novo', 'error');
+        return;
+    }
+
+    // Aviso não bloqueante: cálculo por km ativo sem cidade/UF, coordenadas ou valor
+    // por km quase sempre gera distância errada ou taxa zerada pro cliente.
+    const calculoKmAtivoCheckbox = document.getElementById('calculoKmAtivo');
+    if (calculoKmAtivoCheckbox?.checked && !silencioso) {
+        const semCidade = !document.getElementById('lojaCidadeUf').value.trim();
+        const semCoordenadas = !document.getElementById('lojaLat').value || !document.getElementById('lojaLng').value;
+        const semValorKm = !(parseFloat(document.getElementById('valorPorKm').value) > 0);
+        if (semCidade || semCoordenadas) {
+            showToast('⚠️ Preencha cidade/UF e as coordenadas da loja pro cálculo por km funcionar corretamente', 'error');
+        } else if (semValorKm) {
+            showToast('⚠️ Preencha o valor por km — sem isso a taxa automática sempre sai R$ 0,00', 'error');
+        }
+    }
+
     const settings = {
         nome: document.getElementById('storeName').value,
+        logoUrl: document.getElementById('storeLogoUrl').value.trim(),
+        saudacao: document.getElementById('storeGreeting').value.trim(),
         telefone: document.getElementById('storePhone').value,
+        redesSociais: {
+            facebook: document.getElementById('socialFacebook').value.trim(),
+            instagram: document.getElementById('socialInstagram').value.trim()
+        },
         taxaEntrega: parseFloat(document.getElementById('deliveryFee').value),
         tempoEntrega: parseInt(document.getElementById('deliveryTime').value),
         pedidoMinimo: parseFloat(document.getElementById('minimumOrder').value),
         saboresPizza,
         adicionaisSanduiche,
         bairrosEntrega,
+        calculoPorKm: {
+            ativo: document.getElementById('calculoKmAtivo').checked,
+            provedor: document.getElementById('provedorGeocoding').value,
+            googleApiKey: document.getElementById('googleApiKey').value.trim(),
+            lojaLat: parseFloat(document.getElementById('lojaLat').value) || null,
+            lojaLng: parseFloat(document.getElementById('lojaLng').value) || null,
+            cidadeUf: document.getElementById('lojaCidadeUf').value.trim(),
+            valorPorKm: parseFloat(document.getElementById('valorPorKm').value) || 0,
+            taxaMinima: parseFloat(document.getElementById('taxaMinimaKm').value) || 0
+        },
         promocoes,
         horarioFuncionamento,
         hero: {
@@ -1143,17 +1686,76 @@ async function salvarConfiguracoes() {
                 { valor: document.getElementById('heroStat2Valor').value.trim(), label: document.getElementById('heroStat2Label').value.trim() },
                 { valor: document.getElementById('heroStat3Valor').value.trim(), label: document.getElementById('heroStat3Label').value.trim() }
             ]
+        },
+        fidelidade: {
+            ativo: document.getElementById('fidelidadeAtivo').checked,
+            pedidosNecessarios: parseInt(document.getElementById('fidelidadePedidos').value) || 10,
+            valorMinimo: parseFloat(document.getElementById('fidelidadeValorMinimo').value) || 0,
+            desconto: parseFloat(document.getElementById('fidelidadeDesconto').value) || 10
         }
     };
 
     try {
-        showToast('Salvando configurações...', 'info');
+        if (!silencioso) showToast('Salvando configurações...', 'info');
         await updateSettings(settings);
         showToast('Configurações salvas com sucesso!', 'success');
         renderizarDashboard();
     } catch (error) {
         console.error('Erro ao salvar configurações:', error);
         showToast('Erro ao salvar configurações', 'error');
+    }
+}
+
+// ========== PAGAMENTO ONLINE (PagBank) ==========
+// Separado de salvarConfiguracoes() DE PROPÓSITO: o token é um dado sensível, então tem
+// seu próprio botão/ação — assim ele nunca é reescrito/apagado sem querer só porque
+// alguém salvou o resto das configurações da loja.
+async function carregarStatusTokenPagamento() {
+    const statusEl = document.getElementById('pagamentoOnlineTokenStatus');
+    if (!statusEl) return;
+    try {
+        const existe = await existeTokenGatewayPagamento(obterLojaAtual());
+        statusEl.textContent = existe
+            ? '✅ Já existe um token salvo — cole um novo aqui só se quiser trocá-lo.'
+            : 'Nenhum token salvo ainda. Gere um no painel do desenvolvedor PagBank e cole aqui.';
+    } catch (error) {
+        console.error('Erro ao checar token de pagamento:', error);
+        statusEl.textContent = 'Não foi possível checar o status do token agora.';
+    }
+}
+
+async function salvarPagamentoOnline() {
+    const btn = document.getElementById('salvarPagamentoOnlineBtn');
+    const ativo = document.getElementById('pagamentoOnlineAtivo').checked;
+    const token = document.getElementById('pagamentoOnlineToken').value.trim();
+    const ambiente = document.getElementById('pagamentoOnlineAmbiente').value;
+    const lojaId = obterLojaAtual();
+
+    // Recurso temporariamente indisponível (falta a Cloud Function que abre o checkout no
+    // PagBank — ver index.js). Só deixa SALVAR quando for pra DESATIVAR; ativar de novo fica
+    // bloqueado aqui pra ninguém religar sem querer e travar pedido de cliente de verdade.
+    if (ativo) {
+        showToast('Pagamento online está indisponível no momento — não é possível ativar agora.', 'error');
+        document.getElementById('pagamentoOnlineAtivo').checked = false;
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Salvando...';
+    try {
+        await definirPagamentoOnlineAtivo(ativo, 'pagbank');
+        if (token) {
+            await salvarTokenGatewayPagamento(lojaId, { gateway: 'pagbank', token, ambiente });
+            document.getElementById('pagamentoOnlineToken').value = '';
+        }
+        showToast('Pagamento online salvo!', 'success');
+        carregarStatusTokenPagamento();
+    } catch (error) {
+        console.error('Erro ao salvar pagamento online:', error);
+        showToast('Erro ao salvar pagamento online', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Salvar Pagamento Online';
     }
 }
 
@@ -1212,7 +1814,7 @@ function renderizarDashboard() {
     const vendasOntemMesmaHora = pedidosEntregues.filter(p => { const d = dataDaVenda(p); return d && d >= inicioOntem && d < horaEquivalenteOntem; });
     const vendasMes = pedidosEntregues.filter(p => { const d = dataDaVenda(p); return d && d >= inicioMes; });
 
-    const pedidosAbertos = pedidosAdmin.filter(p => ['pendente', 'preparando', 'saiu_entrega'].includes(p.status || 'pendente'));
+    const pedidosAbertos = pedidosAdmin.filter(p => ['pendente', 'preparando', 'pronto', 'saiu_entrega'].includes(p.status || 'pendente'));
 
     const faturamentoHoje = vendasHoje.reduce((soma, p) => soma + (p.total || 0), 0);
     const faturamentoOntemMesmaHora = vendasOntemMesmaHora.reduce((soma, p) => soma + (p.total || 0), 0);
@@ -1729,12 +2331,11 @@ async function exportarRelatorio(periodo) {
         const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
         const { inicio, fim, label } = intervaloRelatorio(periodo, inicioHoje);
 
-        const pedidosNoPeriodo = pedidosAdmin
-            .filter(p => {
-                const d = paraData(p.criadoEm);
-                return d && d >= inicio && d < fim;
-            })
-            .sort((a, b) => (paraData(b.criadoEm) || 0) - (paraData(a.criadoEm) || 0));
+        // Busca direto no Firestore, escopado exatamente pro período pedido — não depende
+        // do que já estava carregado na tela (pedidosAdmin), que agora só cobre os últimos
+        // 60 dias por padrão. Assim o relatório continua correto mesmo pra períodos mais
+        // antigos que essa janela.
+        const pedidosNoPeriodo = await buscarPedidosPorPeriodo(inicio, fim);
 
         const entreguesNoPeriodo = pedidosNoPeriodo.filter(p => p.status === 'entregue');
         const canceladosNoPeriodo = pedidosNoPeriodo.filter(p => p.status === 'cancelado');
@@ -1922,8 +2523,10 @@ async function exportarRelatorio(periodo) {
 // ========== LOGOUT ==========
 document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     try {
+        // Guarda o slug ANTES do logout (obterLojaAtual() lê a variável setada no login)
+        const slugDaLoja = obterLojaAtual();
         await logoutAdmin();
-        window.location.href = 'index.html';
+        window.location.href = slugDaLoja ? `index.html?loja=${encodeURIComponent(slugDaLoja)}` : 'index.html';
     } catch (error) {
         console.error('Erro ao fazer logout:', error);
         showToast('Erro ao fazer logout', 'error');
@@ -2013,9 +2616,18 @@ function normalizarLinhaPlanilha(linha) {
     const categoria = CATEGORIAS_CARDAPIO.includes(String(linha.categoria || '').trim()) ? String(linha.categoria).trim() : 'burgers';
     const badge = BADGES_CARDAPIO.includes(String(linha.badge || '').trim()) ? String(linha.badge).trim() : '';
     const controlaEstoque = paraBooleano(linha.controlaEstoque);
+    const nome = String(linha.nome || '').trim();
+
+    // Usa a URL da coluna "imagem" da planilha quando ela vier preenchida — só cai
+    // pro placeholder gerado quando a célula está mesmo vazia. Antes essa linha
+    // ignorava a coluna e gerava placeholder pra TODA importação, mesmo quando a
+    // planilha já trazia a foto real (como o template, que vem com fotos prontas
+    // do Unsplash) — por isso a imagem "não importava".
+    const imagemPlanilha = String(linha.imagem || '').trim();
+    const imagem = imagemPlanilha || `https://placehold.co/400x400/EFEFEF/666666?text=${encodeURIComponent(nome || 'Produto').slice(0, 20)}`;
 
     return {
-        nome: String(linha.nome || '').trim(),
+        nome,
         categoria,
         preco: parseFloat(String(linha.preco).replace(',', '.')) || 0,
         descricao: String(linha.descricao || '').trim(),
@@ -2023,8 +2635,11 @@ function normalizarLinhaPlanilha(linha) {
         estoque: parseInt(linha.estoque) || 0,
         badge,
         ativo: paraBooleano(linha.ativo),
-        // Planilha não tem imagem — placeholder editável no preview antes de importar
-        imagem: `https://placehold.co/400x400/EFEFEF/666666?text=${encodeURIComponent(String(linha.nome || 'Produto').slice(0, 20))}`,
+        imagem,
+        // Marca se a imagem veio da própria planilha ou foi gerada aqui — usado só
+        // no preview, pra deixar claro pro admin quais itens ainda precisam de foto
+        // de verdade antes de importar.
+        imagemGerada: !imagemPlanilha,
         incluir: true
     };
 }
@@ -2063,7 +2678,9 @@ function renderizarPreviewCardapio() {
                 <input class="input-field campo-cardapio" data-idx="${i}" data-field="descricao" value="${escapeAttr(p.descricao)}">
             </div>
             <div class="form-group">
-                <label>URL da Imagem <small>(placeholder gerado — troque pela foto real)</small></label>
+                <label>URL da Imagem ${p.imagemGerada
+                    ? '<small style="color:#b45309;">(placeholder gerado — planilha veio sem imagem, troque pela foto real)</small>'
+                    : '<small style="color:#0a7c2f;">(vindo da planilha)</small>'}</label>
                 <input class="input-field campo-cardapio" data-idx="${i}" data-field="imagem" value="${escapeAttr(p.imagem)}">
             </div>
             <div class="form-row">
@@ -2193,3 +2810,566 @@ function showToast(message, type = 'info') {
         toast.classList.remove('show');
     }, 3000);
 }
+
+// ========== CUPONS (adicionar ao admin.js) ==========
+// Adicione este código ao final de admin.js, após a última função
+
+let cuponsData = [];
+let cupomEmEdicao = null;
+
+// ========== EVENTOS CUPONS ==========
+function inicializarEventosCupons() {
+    document.getElementById('novosCupomBtn')?.addEventListener('click', abrirModalNovoCupom);
+    document.getElementById('closeCuponModal')?.addEventListener('click', fecharModalCupom);
+    document.getElementById('cancelCuponBtn')?.addEventListener('click', fecharModalCupom);
+    document.getElementById('cuponForm')?.addEventListener('submit', salvarCupom);
+    
+    // Filtro e busca
+    document.getElementById('cuponSearchInput')?.addEventListener('input', filtrarCupons);
+    document.getElementById('cuponStatusFilter')?.addEventListener('change', filtrarCupons);
+    
+    // Fechar modal ao clicar fora
+    document.getElementById('cuponModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'cuponModal') fecharModalCupom();
+    });
+}
+
+// ========== CARREGAR CUPONS ==========
+async function carregarCupons() {
+    try {
+        cuponsData = await getAllCupons();
+        renderizarCuponsTabela();
+        atualizarEstatisticasCupons();
+    } catch (error) {
+        console.error('Erro ao carregar cupons:', error);
+        showToast('Erro ao carregar cupons', 'error');
+    }
+}
+
+// ========== RENDERIZAR TABELA ==========
+function renderizarCuponsTabela() {
+    const tbody = document.getElementById('cuponsTableBody');
+    if (!tbody) return;
+    
+    if (cuponsData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 30px; color: var(--text-light);">Nenhum cupom cadastrado ainda</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = cuponsData.map(cupom => `
+        <tr>
+            <td><strong>${cupom.codigo}</strong></td>
+            <td>${cupom.nome}</td>
+            <td><strong>${cupom.desconto}%</strong></td>
+            <td>
+                <span title="${cupom.usosMaximos ? `Máximo: ${cupom.usosMaximos}` : 'Ilimitado'}">
+                    ${cupom.usosAtuais || 0}${cupom.usosMaximos ? ` / ${cupom.usosMaximos}` : ''}
+                </span>
+            </td>
+            <td>
+                ${cupom.minimoCarrinho ? `R$ ${Number(cupom.minimoCarrinho).toFixed(2)}` : '—'}
+            </td>
+            <td>
+                ${cupom.dataExpiracao ? formatarData(cupom.dataExpiracao) : '—'}
+            </td>
+            <td>
+                <span class="status-badge ${cupom.ativo ? 'status-ativo' : 'status-inativo'}">
+                    ${cupom.ativo ? '✓ Ativo' : '✗ Inativo'}
+                </span>
+            </td>
+            <td>
+                <div class="action-buttons" style="gap: 8px;">
+                    <button class="btn btn-sm btn-secondary" onclick="editarCupom('${cupom.id}')" title="Editar">✏️</button>
+                    <button class="btn btn-sm btn-danger" onclick="deletarCuponConfirm('${cupom.id}')" title="Deletar">🗑️</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// ========== ABRIR MODAL NOVO ==========
+function abrirModalNovoCupom() {
+    cupomEmEdicao = null;
+    document.getElementById('cuponModalTitle').textContent = 'Novo Cupom';
+    document.getElementById('cuponForm').reset();
+    document.getElementById('cuponAtivo').checked = true;
+    document.getElementById('cuponInfoWrapper').style.display = 'none';
+    
+    // Limpar erros
+    document.querySelectorAll('.field-error').forEach(el => el.textContent = '');
+    
+    document.getElementById('cuponModal').style.display = 'flex';
+}
+
+// ========== EDITAR CUPOM ==========
+async function editarCupom(cupomId) {
+    try {
+        cupomEmEdicao = await getCupomById(cupomId);
+        if (!cupomEmEdicao) {
+            showToast('Cupom não encontrado', 'error');
+            return;
+        }
+        
+        document.getElementById('cuponModalTitle').textContent = 'Editar Cupom';
+        document.getElementById('cuponCodigo').value = cupomEmEdicao.codigo;
+        document.getElementById('cuponNome').value = cupomEmEdicao.nome;
+        document.getElementById('cuponDesconto').value = cupomEmEdicao.desconto;
+        document.getElementById('cuponMinimo').value = cupomEmEdicao.minimoCarrinho || '';
+        document.getElementById('cuponUsosMaximos').value = cupomEmEdicao.usosMaximos || '';
+        document.getElementById('cuponDescricao').value = cupomEmEdicao.descricao || '';
+        document.getElementById('cuponAtivo').checked = cupomEmEdicao.ativo !== false;
+        
+        // Data de expiração
+        if (cupomEmEdicao.dataExpiracao) {
+            const data = paraDataJS(cupomEmEdicao.dataExpiracao);
+            if (data) {
+                document.getElementById('cuponDataExpiracao').value = data.toISOString().split('T')[0];
+            }
+        }
+        
+        // Mostrar informações de uso
+        document.getElementById('cuponInfoWrapper').style.display = 'block';
+        document.getElementById('cuponDataCriacao').textContent = formatarDataHora(cupomEmEdicao.dataCriacao);
+        document.getElementById('cuponUsosAtuais').textContent = `${cupomEmEdicao.usosAtuais || 0}`;
+        
+        // Limpar erros
+        document.querySelectorAll('.field-error').forEach(el => el.textContent = '');
+        
+        document.getElementById('cuponModal').style.display = 'flex';
+    } catch (error) {
+        console.error('Erro ao editar cupom:', error);
+        showToast('Erro ao editar cupom', 'error');
+    }
+}
+
+// ========== SALVAR CUPOM ==========
+async function salvarCupom(e) {
+    e.preventDefault();
+    
+    const codigo = document.getElementById('cuponCodigo').value.trim();
+    const nome = document.getElementById('cuponNome').value.trim();
+    const desconto = document.getElementById('cuponDesconto').value;
+    const minimo = document.getElementById('cuponMinimo').value;
+    const usosMaximos = document.getElementById('cuponUsosMaximos').value;
+    const dataExpiracao = document.getElementById('cuponDataExpiracao').value;
+    const descricao = document.getElementById('cuponDescricao').value.trim();
+    const ativo = document.getElementById('cuponAtivo').checked;
+    
+    // Validações
+    let erros = {};
+    
+    if (!codigo) {
+        erros.codigo = 'Código é obrigatório';
+    }
+    if (!nome) {
+        erros.nome = 'Nome é obrigatório';
+    }
+    if (!desconto || desconto < 0 || desconto > 100) {
+        erros.desconto = 'Desconto deve ser entre 0 e 100';
+    }
+    
+    if (Object.keys(erros).length > 0) {
+        Object.keys(erros).forEach(field => {
+            const errorEl = document.getElementById(`errCupom${field.charAt(0).toUpperCase() + field.slice(1)}`);
+            if (errorEl) errorEl.textContent = erros[field];
+        });
+        return;
+    }
+    
+    try {
+        const cupomData = {
+            codigo: codigo.toUpperCase(),
+            nome,
+            desconto: Number(desconto),
+            minimoCarrinho: minimo ? Number(minimo) : 0,
+            usosMaximos: usosMaximos ? Number(usosMaximos) : null,
+            dataExpiracao: dataExpiracao ? new Date(dataExpiracao) : null,
+            descricao,
+            ativo
+        };
+        
+        const btn = document.getElementById('saveCuponBtn');
+        btn.disabled = true;
+        btn.textContent = 'Salvando...';
+        
+        if (cupomEmEdicao) {
+            // Atualizar
+            await updateCupom(cupomEmEdicao.id, cupomData);
+            showToast('Cupom atualizado com sucesso', 'success');
+        } else {
+            // Criar
+            await criarCupom(cupomData);
+            showToast('Cupom criado com sucesso', 'success');
+        }
+        
+        fecharModalCupom();
+        await carregarCupons();
+    } catch (error) {
+        console.error('Erro ao salvar cupom:', error);
+        showToast('Erro ao salvar cupom', 'error');
+    } finally {
+        const btn = document.getElementById('saveCuponBtn');
+        btn.disabled = false;
+        btn.textContent = 'Salvar Cupom';
+    }
+}
+
+// ========== DELETAR CUPOM ==========
+async function deletarCuponConfirm(cupomId) {
+    const cupom = cuponsData.find(c => c.id === cupomId);
+    if (!cupom) return;
+    
+    if (confirm(`Deletar cupom "${cupom.codigo}" (${cupom.nome})? Essa ação não pode ser desfeita.`)) {
+        try {
+            await deletarCupom(cupomId);
+            showToast('Cupom deletado com sucesso', 'success');
+            await carregarCupons();
+        } catch (error) {
+            console.error('Erro ao deletar cupom:', error);
+            showToast('Erro ao deletar cupom', 'error');
+        }
+    }
+}
+
+// ========== FILTRAR CUPONS ==========
+function filtrarCupons() {
+    const searchText = document.getElementById('cuponSearchInput')?.value.toLowerCase() || '';
+    const statusFilter = document.getElementById('cuponStatusFilter')?.value || '';
+    
+    let cupomsFiltrados = cuponsData;
+    
+    // Filtrar por texto
+    if (searchText) {
+        cupomsFiltrados = cupomsFiltrados.filter(c => 
+            c.codigo.toLowerCase().includes(searchText) ||
+            c.nome.toLowerCase().includes(searchText)
+        );
+    }
+    
+    // Filtrar por status
+    if (statusFilter === 'ativo') {
+        cupomsFiltrados = cupomsFiltrados.filter(c => c.ativo);
+    } else if (statusFilter === 'inativo') {
+        cupomsFiltrados = cupomsFiltrados.filter(c => !c.ativo);
+    } else if (statusFilter === 'expirado') {
+        cupomsFiltrados = cupomsFiltrados.filter(c => {
+            const dataExp = paraDataJS(c.dataExpiracao);
+            return dataExp && new Date() > dataExp;
+        });
+    }
+    
+    // Atualizar tabela
+    const tbody = document.getElementById('cuponsTableBody');
+    if (!tbody) return;
+    
+    if (cupomsFiltrados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 30px; color: var(--text-light);">Nenhum cupom encontrado</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = cupomsFiltrados.map(cupom => `
+        <tr>
+            <td><strong>${cupom.codigo}</strong></td>
+            <td>${cupom.nome}</td>
+            <td><strong>${cupom.desconto}%</strong></td>
+            <td>
+                <span title="${cupom.usosMaximos ? `Máximo: ${cupom.usosMaximos}` : 'Ilimitado'}">
+                    ${cupom.usosAtuais || 0}${cupom.usosMaximos ? ` / ${cupom.usosMaximos}` : ''}
+                </span>
+            </td>
+            <td>
+                ${cupom.minimoCarrinho ? `R$ ${Number(cupom.minimoCarrinho).toFixed(2)}` : '—'}
+            </td>
+            <td>
+                ${cupom.dataExpiracao ? formatarData(cupom.dataExpiracao) : '—'}
+            </td>
+            <td>
+                <span class="status-badge ${cupom.ativo ? 'status-ativo' : 'status-inativo'}">
+                    ${cupom.ativo ? '✓ Ativo' : '✗ Inativo'}
+                </span>
+            </td>
+            <td>
+                <div class="action-buttons" style="gap: 8px;">
+                    <button class="btn btn-sm btn-secondary" onclick="editarCupom('${cupom.id}')" title="Editar">✏️</button>
+                    <button class="btn btn-sm btn-danger" onclick="deletarCuponConfirm('${cupom.id}')" title="Deletar">🗑️</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// ========== FECHAR MODAL ==========
+function fecharModalCupom() {
+    document.getElementById('cuponModal').style.display = 'none';
+    cupomEmEdicao = null;
+}
+
+// ========== ATUALIZAR ESTATÍSTICAS ==========
+async function atualizarEstatisticasCupons() {
+    try {
+        const stats = await obterEstatisticasCupons();
+        
+        document.getElementById('statTotalCupons').textContent = stats.totalCupons;
+        document.getElementById('statCuponsAtivos').textContent = stats.cuponsAtivos;
+        document.getElementById('statTotalUsos').textContent = stats.totalUsos;
+        
+        // Cupons mais usados
+        if (stats.cupomsMaisUsados && stats.cupomsMaisUsados.length > 0) {
+            const wrapper = document.getElementById('cuponsMaisUsadosWrapper');
+            wrapper.style.display = 'block';
+            
+            const tbody = document.getElementById('cuponsMaisUsadosBody');
+            tbody.innerHTML = stats.cupomsMaisUsados.map(cupom => `
+                <tr>
+                    <td><strong>${cupom.codigo}</strong></td>
+                    <td>${cupom.desconto}%</td>
+                    <td>${cupom.usosAtuais || 0}</td>
+                </tr>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Erro ao atualizar estatísticas:', error);
+    }
+}
+
+// ========== FORMATADORES ==========
+// Converte pra Date de verdade, aceitando Timestamp do Firestore ({seconds,nanoseconds},
+// com método .toDate()), Date do JS, string ou número. "new Date(timestampDoFirestore)"
+// direto vira "Invalid Date" — é isso que causava o "Invalid Date" na tela e o erro ao
+// editar cupom (toISOString() de uma Invalid Date lança exceção).
+function paraDataJS(valor) {
+    if (!valor) return null;
+    if (valor instanceof Date) return valor;
+    if (typeof valor.toDate === 'function') return valor.toDate();
+    const d = new Date(valor);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function formatarData(data) {
+    const d = paraDataJS(data);
+    return d ? d.toLocaleDateString('pt-BR') : '—';
+}
+
+function formatarDataHora(data) {
+    const d = paraDataJS(data);
+    return d ? d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+}
+
+// ========== CLIENTES ==========
+let todosOsClientes = [];
+
+async function carregarClientes() {
+    const tbody = document.getElementById('clientesTableBody');
+    try {
+        todosOsClientes = await listarClientes();
+        renderizarClientes();
+    } catch (error) {
+        console.error('Erro ao carregar clientes:', error);
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-light);">Erro ao carregar clientes.</td></tr>';
+    }
+}
+
+function renderizarClientes() {
+    const tbody = document.getElementById('clientesTableBody');
+    const contagem = document.getElementById('clientesContagem');
+    const busca = (document.getElementById('clienteSearchInput').value || '').trim().toLowerCase();
+    const filtro = document.getElementById('clienteFiltro').value;
+    const ordenar = document.getElementById('clienteOrdenar').value;
+
+    let lista = todosOsClientes;
+
+    if (busca) {
+        lista = lista.filter(c =>
+            (c.nome || '').toLowerCase().includes(busca) ||
+            (c.telefone || '').replace(/\D/g, '').includes(busca.replace(/\D/g, ''))
+        );
+    }
+    if (filtro === 'aceitaPromocao') {
+        lista = lista.filter(c => c.aceitaPromocao === true);
+    } else if (filtro === 'inativos30') {
+        const limite = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        lista = lista.filter(c => {
+            const d = paraDataJS(c.ultimoPedidoEm);
+            return d && d.getTime() < limite;
+        });
+    }
+
+    lista = [...lista].sort((a, b) => {
+        if (ordenar === 'pedidos') return (b.totalPedidos || 0) - (a.totalPedidos || 0);
+        if (ordenar === 'gasto') return (b.totalGasto || 0) - (a.totalGasto || 0);
+        return (paraDataJS(b.ultimoPedidoEm)?.getTime() || 0) - (paraDataJS(a.ultimoPedidoEm)?.getTime() || 0);
+    });
+
+    contagem.textContent = `${lista.length} cliente${lista.length === 1 ? '' : 's'}`;
+
+    if (lista.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-light);">Nenhum cliente encontrado.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = lista.map(c => {
+        const endereco = [c.endereco, c.bairro].filter(Boolean).join(' — ') || '<span style="color:var(--text-light);">Retirada / não informado</span>';
+        return `
+            <tr>
+                <td data-label="Nome">${escaparHtmlAdmin(c.nome || '—')}</td>
+                <td data-label="Telefone">${escaparHtmlAdmin(c.telefone || '—')}</td>
+                <td data-label="Endereço">${endereco}</td>
+                <td data-label="Pedidos">${c.totalPedidos || 0}</td>
+                <td data-label="Total gasto">R$ ${(c.totalGasto || 0).toFixed(2)}</td>
+                <td data-label="Última compra">${formatarData(c.ultimoPedidoEm)}</td>
+                <td data-label="Ações">
+                    <button type="button" class="btn btn-sm btn-secondary" data-historico="${c.id}" title="Ver histórico de pedidos">📋</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-enviar-promo="${c.id}" title="Mandar mensagem no WhatsApp" ${c.aceitaPromocao ? '' : 'disabled'}>📣</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-excluir-cliente="${c.id}" title="Excluir cadastro">🗑️</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.querySelectorAll('[data-historico]').forEach(btn => {
+        btn.addEventListener('click', () => abrirHistoricoCliente(btn.dataset.historico));
+    });
+    tbody.querySelectorAll('[data-enviar-promo]').forEach(btn => {
+        btn.addEventListener('click', () => enviarPromoParaCliente(btn.dataset.enviarPromo));
+    });
+    tbody.querySelectorAll('[data-excluir-cliente]').forEach(btn => {
+        btn.addEventListener('click', () => excluirClienteConfirmado(btn.dataset.excluirCliente));
+    });
+}
+
+// Histórico de pedidos do cliente — base pro que vem depois (gráfico, cupom
+// personalizado, fidelidade). Por enquanto é só uma lista, sem gráfico nenhum ainda.
+async function abrirHistoricoCliente(clienteId) {
+    const cliente = todosOsClientes.find(c => c.id === clienteId);
+    if (!cliente) return;
+
+    const corpo = document.getElementById('historicoClienteBody');
+    corpo.innerHTML = '<div style="padding:50px 20px; text-align:center; color:var(--text-light);">Carregando...</div>';
+    abrirModal('modalHistoricoCliente');
+
+    try {
+        const [pedidos, fidelidadeConfig, progresso] = await Promise.all([
+            listarPedidosDoCliente(cliente.telefone),
+            getSettings().then(c => c?.fidelidade).catch(() => null),
+            obterProgressoFidelidade(cliente.telefone).catch(() => null)
+        ]);
+
+        const totalGasto = pedidos.reduce((s, p) => s + (p.total || 0), 0);
+
+        const iniciais = (cliente.nome || cliente.telefone || '?').trim().charAt(0).toUpperCase();
+
+        const blocoFidelidade = montarBlocoFidelidade(fidelidadeConfig, progresso);
+
+        const listaPedidosHtml = pedidos.length === 0
+            ? '<div class="hist-lista-vazio">Nenhum pedido encontrado pra esse telefone.</div>'
+            : pedidos.map(p => {
+                const statusNorm = (p.status || '').toLowerCase();
+                const classeStatus = statusNorm === 'entregue' ? 'st-entregue' : statusNorm.includes('cancel') ? 'st-cancelado' : 'st-outro';
+                const qtdItens = (p.itens || []).length;
+                return `
+                    <div class="hist-pedido">
+                        <div class="hist-pedido-info">
+                            <div class="hist-pedido-codigo">${escaparHtmlAdmin(p.codigoPedido || p.id.slice(0, 6))}</div>
+                            <div class="hist-pedido-meta">${formatarDataHora(p.criadoEm)} · ${qtdItens} ite${qtdItens === 1 ? 'm' : 'ns'}</div>
+                            <span class="hist-status-pill ${classeStatus}">${escaparHtmlAdmin(p.status || '—')}</span>
+                        </div>
+                        <div class="hist-pedido-valor">R$ ${(p.total || 0).toFixed(2)}</div>
+                    </div>
+                `;
+            }).join('');
+
+        corpo.innerHTML = `
+            <div class="hist-header">
+                <div class="hist-header-top">
+                    <div>
+                        <div class="hist-header-nome">${escaparHtmlAdmin(cliente.nome || cliente.telefone)}</div>
+                        <div class="hist-header-sub">${escaparHtmlAdmin(cliente.telefone || '')}</div>
+                    </div>
+                    <button type="button" class="hist-header-close" data-fechar-historico>&times;</button>
+                </div>
+                <div class="hist-stats">
+                    <div class="hist-stat"><strong>${pedidos.length}</strong><span>Pedidos</span></div>
+                    <div class="hist-stat"><strong>R$ ${totalGasto.toFixed(2)}</strong><span>Total gasto</span></div>
+                </div>
+            </div>
+            ${blocoFidelidade}
+            <div class="hist-lista">${listaPedidosHtml}</div>
+        `;
+
+        corpo.querySelector('[data-fechar-historico]')?.addEventListener('click', () => fecharModal('modalHistoricoCliente'));
+    } catch (error) {
+        console.error('Erro ao carregar histórico do cliente:', error);
+        corpo.innerHTML = '<div style="padding:40px 20px; text-align:center; color:var(--text-light);">Erro ao carregar o histórico.</div>';
+    }
+}
+
+function montarBlocoFidelidade(fidelidadeConfig, progresso) {
+    if (!fidelidadeConfig?.ativo) return '';
+
+    const necessarios = fidelidadeConfig.pedidosNecessarios || 10;
+    const atuais = progresso?.pedidosQualificados || 0;
+    const disponivel = progresso?.disponivel === true;
+    const percentual = disponivel ? 100 : Math.min(100, Math.round((atuais / necessarios) * 100));
+
+    if (disponivel) {
+        return `
+            <div class="hist-fidelidade pronta">
+                <div class="hist-fidelidade-topo"><span>🎉 Recompensa disponível!</span><span>${progresso.desconto}% OFF</span></div>
+                <div class="hist-fidelidade-barra"><div class="hist-fidelidade-barra-fill" style="width:100%;"></div></div>
+            </div>
+        `;
+    }
+    return `
+        <div class="hist-fidelidade">
+            <div class="hist-fidelidade-topo"><span>🎁 Rumo à recompensa</span><span>${atuais}/${necessarios} pedidos</span></div>
+            <div class="hist-fidelidade-barra"><div class="hist-fidelidade-barra-fill" style="width:${percentual}%;"></div></div>
+        </div>
+    `;
+}
+
+function escaparHtmlAdmin(str) {
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
+    return div.innerHTML;
+}
+
+// O WhatsApp recusa o link wa.me sem o código do país (o erro é literalmente esse:
+// "código do país não foi inserido") — o telefone salvo no cadastro do cliente é só
+// DDD+número (o jeito que a pessoa digita no checkout), então precisamos completar com
+// o 55 aqui. Se por algum motivo já vier com o código do país (13 dígitos), não mexe.
+function formatarTelefoneWhatsApp(telefone) {
+    const digitos = (telefone || '').replace(/\D/g, '');
+    return digitos.length <= 11 ? `55${digitos}` : digitos;
+}
+
+function enviarPromoParaCliente(clienteId) {
+    const cliente = todosOsClientes.find(c => c.id === clienteId);
+    const mensagem = document.getElementById('promoMensagem').value.trim();
+    if (!cliente) return;
+    if (!mensagem) {
+        showToast('Escreva a mensagem da promoção antes de enviar', 'error');
+        document.getElementById('promoMensagem').focus();
+        return;
+    }
+    const numero = formatarTelefoneWhatsApp(cliente.telefone);
+    const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
+    window.open(url, '_blank');
+}
+
+async function excluirClienteConfirmado(clienteId) {
+    const cliente = todosOsClientes.find(c => c.id === clienteId);
+    if (!confirm(`Excluir o cadastro de "${cliente?.nome || 'este cliente'}"? Os pedidos já feitos continuam no histórico, só o cadastro consolidado é apagado.`)) return;
+    try {
+        await excluirCliente(clienteId);
+        todosOsClientes = todosOsClientes.filter(c => c.id !== clienteId);
+        renderizarClientes();
+        showToast('Cliente excluído', 'success');
+    } catch (error) {
+        console.error('Erro ao excluir cliente:', error);
+        showToast('Erro ao excluir cliente', 'error');
+    }
+}
+
+document.getElementById('clienteSearchInput')?.addEventListener('input', renderizarClientes);
+document.getElementById('clienteFiltro')?.addEventListener('change', renderizarClientes);
+document.getElementById('clienteOrdenar')?.addEventListener('change', renderizarClientes);

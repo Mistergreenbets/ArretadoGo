@@ -75,6 +75,25 @@ body {
     cursor: pointer;
 }
 
+/* Botão de abrir a sidebar (fica no cabeçalho, fundo claro — cor diferente do botão
+   de dentro da sidebar, que fica sobre fundo escuro) */
+.toggle-sidebar-abrir {
+    display: none;
+    color: var(--text-dark);
+}
+
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 140;
+}
+
+.sidebar-backdrop.active {
+    display: block;
+}
+
 .sidebar-nav {
     display: flex;
     flex-direction: column;
@@ -131,6 +150,14 @@ body {
 .admin-header h1 {
     font-size: 28px;
     font-weight: 700;
+}
+
+/* Agrupa o botão hambúrguer e o título na mesma linha, inclusive quando o cabeçalho
+   empilha em telas pequenas (o botão nunca fica sozinho acima do título). */
+.admin-header-title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .header-actions {
@@ -1063,6 +1090,38 @@ select.input-error {
     line-height: 1.6;
 }
 
+/* ---- Avaliação pós-entrega ---- */
+.order-card-alerta {
+    border-left-color: #e74c3c;
+}
+
+.order-avaliacao {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-color);
+    font-size: 13px;
+}
+
+.order-avaliacao-estrelas {
+    color: #FFB800;
+    letter-spacing: 1px;
+    font-size: 15px;
+}
+
+.order-avaliacao-nota-baixa {
+    color: #e74c3c;
+    font-weight: 600;
+    font-size: 12px;
+    margin-left: 6px;
+}
+
+.order-avaliacao-comentario {
+    display: block;
+    color: var(--text-light);
+    font-style: italic;
+    margin-top: 4px;
+}
+
 .filter-select {
     padding: 8px 12px;
     border: 1px solid var(--border-color);
@@ -1157,6 +1216,16 @@ select.input-error {
 
     .toggle-sidebar {
         display: block;
+    }
+
+    .toggle-sidebar-abrir {
+        display: block;
+        font-size: 22px;
+    }
+
+    .admin-header {
+        display: flex;
+        align-items: center;
     }
 
     .admin-header {
@@ -1360,8 +1429,12 @@ select.input-error {
 
     .admin-header {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
         gap: 12px;
+    }
+
+    .admin-header-title-row {
+        margin-right: 0;
     }
 
     .header-actions {

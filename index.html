@@ -22,16 +22,118 @@
     <link rel="icon" href="favicon.ico?v=1" sizes="any">
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
 
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
     <style>
+        /* Skeleton exibido em #productsContainer enquanto os produtos ainda não chegaram
+           do Firestore. Remove-se sozinho: renderizarProdutos() faz innerHTML='' na
+           primeira renderização real (ver app.js), então não precisa de JS pra tirar isso. */
+        .products-skeleton {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            padding: 48px 20px;
+            animation: products-skeleton-pulse 1.4s ease-in-out infinite;
+        }
+        .products-skeleton-icon {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            opacity: 0.9;
+        }
+        .products-skeleton-bar {
+            height: 14px;
+            border-radius: 7px;
+            background: #e2e2e2;
+        }
+        .products-skeleton-bar-lg { width: 200px; }
+        .products-skeleton-bar-sm { width: 120px; }
+        @keyframes products-skeleton-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
         .input-error {
             border: 2px solid #e53e3e !important;
             background: #fff5f5;
         }
+        /* Dropdown de sugestões de endereço (estilo Uber) — aparece embaixo do campo de
+           endereço enquanto o cliente digita, pra evitar erro de grafia de rua/bairro. */
+        .endereco-sugestoes-wrap {
+            position: relative;
+        }
+        .endereco-sugestoes-box {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 50;
+            background: #fff;
+            border: 1px solid #e2e2e2;
+            border-top: none;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.08);
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        .endereco-sugestao-item {
+            padding: 10px 14px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            border-bottom: 1px solid #f2f2f2;
+        }
+        .endereco-sugestao-item:last-child { border-bottom: none; }
+        .endereco-sugestao-item:hover,
+        .endereco-sugestao-item.ativa {
+            background: #f7f7f7;
+        }
+        .endereco-sugestao-titulo {
+            font-weight: 600;
+            font-size: 0.92rem;
+            color: #222;
+        }
+        .endereco-sugestao-subtitulo {
+            font-size: 0.8rem;
+            color: #888;
+        }
+        .endereco-sugestao-carregando {
+            padding: 10px 14px;
+            font-size: 0.85rem;
+            color: #999;
+        }
         .logo-img {
-            height: 44px;
+            height: 40px;
             width: auto;
             display: block;
+            flex-shrink: 0;
+        }
+        /* Logo redonda da loja, ao lado esquerdo da saudação no cabeçalho — cada loja usa a
+           sua própria (link de imagem, configurável em Configurações), sem depender da
+           logo do ArretadoGo. Se a loja não configurou nenhuma, cai num círculo com a
+           inicial do nome (nunca mostra a marca da plataforma pro cliente final). */
+        .store-logo-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: block;
+            flex-shrink: 0;
+            border: 3px solid var(--accent-color, #FFC107);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            background: #fff;
+        }
+        img.store-logo-circle {
+            object-fit: cover;
+        }
+        .store-logo-fallback {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary-color, #C20000), var(--accent-color, #FFC107));
+            color: #fff;
+            font-size: 26px;
+            font-weight: 800;
         }
         .option-group {
             margin-top: 16px;
@@ -67,6 +169,17 @@
         .option-item.disabled {
             opacity: 0.45;
             cursor: not-allowed;
+        }
+        /* Sabor original da pizza: sempre marcado, não pode ser desmarcado — precisa
+           parecer "confirmado", não "indisponível" (por isso não usa o .disabled acima). */
+        .option-item.sabor-base {
+            border-color: var(--primary-color, #C20000);
+            background: rgba(194, 0, 0, 0.05);
+            cursor: default;
+        }
+        .option-item.sabor-base input {
+            cursor: default;
+            accent-color: var(--primary-color, #C20000);
         }
         .option-item .option-price {
             margin-left: auto;
@@ -160,30 +273,306 @@
             outline-offset: 4px;
             border-radius: 10px;
         }
+
+        /* ===== Cupom de desconto — visual de "ticket" picotado, remete a um cupom físico ===== */
+        .cupom-box {
+            margin-bottom: 20px;
+            border-radius: 14px;
+            background: #fff;
+            border: 1px solid #ecebf3;
+            box-shadow: 0 1px 3px rgba(20, 20, 43, 0.06);
+            overflow: hidden;
+        }
+        .cupom-box__header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 13px 18px;
+            background: linear-gradient(120deg, var(--primary-color, #C20000), #8f0000);
+            color: #fff;
+        }
+        .cupom-box__header .icon-badge {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.18);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        .cupom-box__header h3 {
+            margin: 0;
+            font-size: 14.5px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+        /* Friso picotado (perfuração) entre o cabeçalho e o corpo do ticket, com dois
+           "furos" nas laterais — o mesmo recorte que um cupom de verdade tem. */
+        .cupom-box__perforation {
+            position: relative;
+            height: 0;
+            border-top: 2px dashed #e3e2ef;
+            margin: 0 2px;
+        }
+        .cupom-box__perforation::before,
+        .cupom-box__perforation::after {
+            content: '';
+            position: absolute;
+            top: -8px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: inset 0 0 0 1px #ecebf3;
+        }
+        .cupom-box__perforation::before { left: -10px; }
+        .cupom-box__perforation::after { right: -10px; }
+
+        .cupom-box__body {
+            padding: 16px 18px 18px;
+        }
+        .cupom-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .cupom-input-group input {
+            width: 100%;
+            border: 1.5px solid #e4e3ee;
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .cupom-input-group input:focus {
+            outline: none;
+            border-color: var(--primary-color, #C20000);
+            box-shadow: 0 0 0 3px rgba(194, 0, 0, 0.08);
+        }
+        .cupom-input-group button {
+            width: 100%;
+            padding: 13px 0;
+            border-radius: 10px;
+            border: none;
+            background: linear-gradient(135deg, var(--accent-color, #FFC107), #FFB300);
+            box-shadow: 0 2px 6px rgba(255, 179, 0, 0.35);
+            color: #3a2a00;
+            font-weight: 700;
+            font-size: 14.5px;
+            cursor: pointer;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: filter 0.15s, transform 0.05s, box-shadow 0.15s;
+        }
+        .cupom-input-group button:hover { filter: brightness(1.03); box-shadow: 0 3px 10px rgba(255, 179, 0, 0.45); }
+        .cupom-input-group button:active { transform: scale(0.98); box-shadow: 0 1px 4px rgba(255, 179, 0, 0.3); }
+        .cupom-input-group button:disabled { opacity: 0.65; cursor: not-allowed; filter: none; box-shadow: none; }
+
+        #cuponAplicadoWrapper .cupom-aplicado-linha {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        #cuponAplicadoWrapper .cupom-check-badge {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #1fa34d;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            flex-shrink: 0;
+            font-weight: 700;
+        }
+        .cupom-remover-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: none;
+            background: #f6f5fa;
+            color: #8a8a99;
+            font-size: 13px;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: background 0.15s, color 0.15s;
+        }
+        .cupom-remover-btn:hover {
+            background: #fdeeee;
+            color: #b23b3b;
+        }
+
+        /* ===== Chip de status do frete automático (calculando / ok / erro) ===== */
+        .frete-auto-badge {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 13px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            margin: 8px 0 16px;
+            line-height: 1.35;
+        }
+        .frete-auto-badge.is-visible { display: flex; }
+        .frete-auto-badge::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .frete-auto-badge--calculando {
+            background: #f4f4f8;
+            color: #6b6b7b;
+        }
+        .frete-auto-badge--calculando::before {
+            background: #b7b7c4;
+            animation: freteAutoPulse 1s ease-in-out infinite;
+        }
+        .frete-auto-badge--ok {
+            background: #eafaf1;
+            color: #1a7f45;
+        }
+        .frete-auto-badge--ok::before { background: #1fa34d; }
+        .frete-auto-badge--erro {
+            background: #fdf3ea;
+            color: #a8631a;
+        }
+        .frete-auto-badge--erro::before { background: #e0a23c; }
+        @keyframes freteAutoPulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+        #cuponAplicadoWrapper strong {
+            color: #17693a;
+        }
+
+        /* ===== Chip de status do frete automático (calculando / ok / atenção) ===== */
+        .frete-chip {
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            padding: 7px 12px;
+            border-radius: 9px;
+            font-size: 12.5px;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+        .frete-chip[data-status="calculando"] {
+            background: #f4f4f8;
+            color: #6b6b78;
+            border-color: #e7e7ee;
+        }
+        .frete-chip[data-status="calculando"] .frete-chip__dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #9a9aa8;
+            display: inline-block;
+            animation: frete-pulse 1s ease-in-out infinite;
+        }
+        @keyframes frete-pulse {
+            0%, 100% { opacity: 0.25; }
+            50% { opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .frete-chip[data-status="calculando"] .frete-chip__dot { animation: none; }
+        }
+        .frete-chip[data-status="ok"] {
+            background: #eafbf0;
+            color: #1a7a3e;
+            border-color: #c9f0d8;
+        }
+        .frete-chip[data-status="erro"] {
+            background: #fff6e5;
+            color: #9a6400;
+            border-color: #ffe6ad;
+        }
+        .frete-chip__price { font-weight: 800; }
+        .frete-chip__km { font-weight: 500; opacity: 0.75; margin-left: 2px; }
+
+        #cuponAplicadoWrapper {
+            background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+            border-left: 4px solid #4CAF50;
+            padding: 12px;
+            border-radius: 6px;
+        }
+        #cuponAplicadoWrapper strong {
+            color: #2e7d32;
+        }
+        .btn-ghost {
+            background: transparent;
+            border: none;
+            color: #d32f2f;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .btn-ghost:hover {
+            background: rgba(211, 47, 47, 0.1);
+        }
+        @media (max-width: 600px) {
+            #cuponInputWrapper > div {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            #aplicarCuponBtn {
+                width: 100%;
+                margin-top: 8px;
+            }
+        }
     </style>
 </head>
 <body>
-    <!-- HEADER FIXO -->
+    <!-- HEADER FIXO (estilo app mobile: topo com saudação, depois barra de busca) -->
     <header class="header">
-        <div class="container header-content">
-            <div class="logo">
-                <img src="logo.png?v=1" alt="ArretadoGo" class="logo-img">
+        <div class="container header-top">
+            <div class="header-greeting greeting-loading" id="headerGreeting">
+                <img id="storeLogoImg" src="" alt="Logo da loja" class="store-logo-circle" style="display:none;">
+                <div id="storeLogoFallback" class="store-logo-circle store-logo-fallback">?</div>
+                <div class="header-greeting-text-wrap">
+                    <span class="greeting-text" id="headerGreetingPrefix">Olá 👋, ArretadoGo</span>
+                    <!-- Selo Aberto/Fechado: atualizado por atualizarStatusLoja() em app.js, com base
+                         no horário de funcionamento configurado no admin. Fica escondido (display:none)
+                         quando a loja não tem horário controlado (sempre aberta). -->
+                    <span class="store-open-badge" id="storeOpenBadge" style="display:none;"></span>
+                </div>
             </div>
-            
-            <nav class="nav">
-                <a href="#" class="nav-link">Home</a>
-                <a href="#produtos" class="nav-link">Menu</a>
-                <a href="#sobre" class="nav-link">Sobre</a>
-                <a href="admin.html" class="nav-link admin-link">Admin</a>
-            </nav>
 
             <div class="header-actions">
-                <input type="text" id="searchInput" class="search-input" placeholder="Buscar produtos...">
-                <button class="cart-btn" id="cartBtn">
-                    🛒 <span class="cart-count" id="cartCount">0</span>
+                <button class="icon-btn cart-btn" id="cartBtn" aria-label="Abrir carrinho">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                    <span class="cart-count" id="cartCount">0</span>
                 </button>
             </div>
         </div>
+
+        <div class="container header-search-row">
+            <div class="search-wrap">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="searchInput" class="search-input" placeholder="Buscar produtos...">
+            </div>
+            <button type="button" class="filter-toggle-btn" id="filterToggleBtn" title="Ver categorias" aria-label="Ver categorias" onclick="document.getElementById('categoriesContainer')?.scrollIntoView({behavior:'smooth', block:'center'});">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+            </button>
+        </div>
+
+        <nav class="nav nav-secondary">
+            <a href="#" class="nav-link">Home</a>
+            <a href="#produtos" class="nav-link">Menu</a>
+            <a href="#sobre" class="nav-link">Sobre</a>
+        </nav>
     </header>
 
     <!-- Mede a altura real do header (que pode crescer no mobile, quando a busca quebra pra
@@ -203,102 +592,85 @@
     })();
     </script>
 
-    <!-- BANNER DE STATUS DA LOJA (aberta/fechada), controlado pelo horário de funcionamento no admin -->
-    <div class="store-status-banner" id="storeStatusBanner" style="display:none;"></div>
-
-    <!-- HERO SECTION -->
-    <!-- Começa escondida (hero-loading) até o script logo abaixo (cache local) ou o app.js
-         (Firestore) preencherem o texto configurado no admin — evita mostrar o texto de
-         fábrica por uma fração de segundo antes do texto real aparecer. -->
-    <section class="hero hero-loading hero-topo" id="heroSection">
-        <div class="container hero-content">
-            <div class="hero-text">
-                <h2 class="hero-title"><span id="heroPrefixoTexto">Aproveite Sua</span> <span class="highlight" id="heroDestaqueTexto">Comida Deliciosa</span></h2>
-                <p class="hero-subtitle" id="heroSubtituloTexto">Entregamos sua comida em até 30 minutos no seu bairro. Qualidade e agilidade garantidas!</p>
-                <button class="btn btn-primary" id="scrollMenuBtn"><span id="heroBotaoTextoEl">Pedir Agora</span></button>
-                <div class="social-proof">
-                    <div class="proof-item">
-                        <strong id="heroStat1ValorEl">12k+</strong>
-                        <span id="heroStat1LabelEl">Pedidos</span>
-                    </div>
-                    <div class="proof-item">
-                        <strong id="heroStat2ValorEl">4.8★</strong>
-                        <span id="heroStat2LabelEl">Avaliação</span>
-                    </div>
-                    <div class="proof-item">
-                        <strong id="heroStat3ValorEl">20+</strong>
-                        <span id="heroStat3LabelEl">Anos</span>
-                    </div>
-                </div>
-            </div>
-            <div class="hero-image">
-                <div class="product-showcase">
-                    <img src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=400&fit=crop" alt="X-Burguer Premium" class="showcase-img" id="heroImagemEl">
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Lê a Hero cacheada no navegador do próprio visitante (localStorage) e mostra na hora,
-         antes do app.js sequer terminar de carregar. Roda uma única vez, logo após a Hero
-         existir no DOM. Se não houver cache (primeira visita), não faz nada: a Hero permanece
-         escondida (hero-loading) até o app.js buscar os dados no Firestore e revelar. -->
+    <!-- Lê a saudação e a logo cacheadas no navegador do próprio visitante (localStorage) e
+         mostra na hora, antes do app.js sequer terminar de carregar — mesmo problema que a
+         Hero já tinha (ver script de cache dela mais abaixo) e mesma solução. Sem isso, o
+         texto/logo de fábrica ("Olá 👋, ArretadoGo") aparecia primeiro e só trocava pelo da
+         loja de verdade depois que o Firestore respondia, dando a impressão de duas cargas.
+         Se não houver cache (primeira visita), não faz nada: a saudação continua escondida
+         (greeting-loading) até o app.js buscar os dados no Firestore e revelar. -->
     <script>
     (function () {
         try {
-            var cacheRaw = localStorage.getItem('arretadogoHeroCache');
+            var params = new URLSearchParams(window.location.search);
+            var slugAtual = (params.get('loja') || 'padrao').toLowerCase();
+            var chaveCache = 'arretadogoGreetingCache:' + slugAtual;
+
+            var cacheRaw = localStorage.getItem(chaveCache);
             if (!cacheRaw) return;
-            var hero = JSON.parse(cacheRaw);
+            var dados = JSON.parse(cacheRaw);
 
-            var setText = function (id, value) {
-                if (!value) return;
-                var el = document.getElementById(id);
-                if (el) el.textContent = value;
-            };
+            var greetingEl = document.getElementById('headerGreetingPrefix');
+            if (greetingEl && dados.saudacao) greetingEl.textContent = dados.saudacao;
 
-            setText('heroPrefixoTexto', hero.prefixo);
-            setText('heroDestaqueTexto', hero.destaque);
-            setText('heroSubtituloTexto', hero.subtitulo);
-            setText('heroBotaoTextoEl', hero.botaoTexto);
+            var logoImgEl = document.getElementById('storeLogoImg');
+            var logoFallbackEl = document.getElementById('storeLogoFallback');
+            if (logoFallbackEl) {
+                var inicial = (dados.nome || '?').trim().charAt(0).toUpperCase() || '?';
+                logoFallbackEl.textContent = inicial;
+            }
+            if (logoImgEl && logoFallbackEl) {
+                if (dados.logoUrl) {
+                    logoImgEl.onerror = function () {
+                        logoImgEl.style.display = 'none';
+                        logoFallbackEl.style.display = 'flex';
+                    };
+                    logoImgEl.onload = function () {
+                        logoImgEl.style.display = 'block';
+                        logoFallbackEl.style.display = 'none';
+                    };
+                    logoImgEl.src = dados.logoUrl;
+                } else {
+                    logoImgEl.style.display = 'none';
+                    logoFallbackEl.style.display = 'flex';
+                }
+            }
 
-            var imgEl = document.getElementById('heroImagemEl');
-            if (imgEl && hero.imagem) imgEl.src = hero.imagem;
-
-            var stats = Array.isArray(hero.stats) ? hero.stats : [];
-            stats.slice(0, 3).forEach(function (stat, i) {
-                setText('heroStat' + (i + 1) + 'ValorEl', stat && stat.valor);
-                setText('heroStat' + (i + 1) + 'LabelEl', stat && stat.label);
-            });
-
-            var heroSection = document.getElementById('heroSection');
-            if (heroSection) heroSection.classList.remove('hero-loading');
+            var greetingContainer = document.getElementById('headerGreeting');
+            if (greetingContainer) greetingContainer.classList.remove('greeting-loading');
         } catch (e) {
-            // Cache inválido ou localStorage indisponível: sem problema, a Hero continua
+            // Cache inválido ou localStorage indisponível: sem problema, a saudação continua
             // escondida e o app.js revela ela normalmente assim que o Firestore responder.
         }
     })();
     </script>
 
-    <!-- CATEGORIAS -->
-    <section class="categories">
+    <!-- BANNER DE STATUS DA LOJA (aberta/fechada), controlado pelo horário de funcionamento no admin -->
+    <div class="store-status-banner" id="storeStatusBanner" style="display:none;"></div>
+
+    <!-- CARROSSEL DE PROMOÇÕES (topo) -->
+    <!-- Começa escondido (carousel-loading) até o app.js buscar as promoções no Firestore
+         e revelar — evita mostrar a área vazia por uma fração de segundo. -->
+    <section class="hero-carousel-section hero-topo carousel-loading" id="heroCarouselSection">
         <div class="container">
-            <h3 class="section-title">Categorias</h3>
-            <div class="categories-grid" id="categoriesContainer">
-                <!-- Preenchido por JS -->
+            <div class="hero-carousel" id="heroCarousel">
+                <div class="hero-carousel-track" id="heroCarouselTrack">
+                    <!-- Slides das promoções ativas, preenchidos por renderizarHeroCarousel() em app.js -->
+                </div>
+
+                <div class="hero-carousel-dots" id="heroCarouselDots"></div>
+                <div class="hero-carousel-progress" id="heroCarouselProgress" style="display:none;"><span id="heroCarouselProgressBar"></span></div>
             </div>
         </div>
     </section>
 
-    <!-- PROMOÇÕES (banner rotativo, alimentado pelo painel admin) -->
-    <section class="promotions" id="promotionsSection">
+    <!-- CATEGORIAS (faixa horizontal de ícones, estilo app) -->
+    <section class="categories">
         <div class="container">
-            <div class="promo-carousel" id="promoCarousel">
-                <div class="promo-track" id="promoTrack">
-                    <!-- Slides preenchidos por JS -->
+            <div class="categories-scroll">
+                <div class="categories-grid" id="categoriesContainer">
+                    <!-- Preenchido por JS -->
                 </div>
-                <button type="button" class="promo-arrow promo-arrow-prev" id="promoPrev" aria-label="Promoção anterior">‹</button>
-                <button type="button" class="promo-arrow promo-arrow-next" id="promoNext" aria-label="Próxima promoção">›</button>
-                <div class="promo-dots" id="promoDots"></div>
             </div>
         </div>
     </section>
@@ -306,17 +678,19 @@
     <!-- PRODUTOS -->
     <section class="products" id="produtos">
         <div class="container">
-            <h3 class="section-title">Nossos Produtos</h3>
-            
-            <div class="filters">
-                <button class="filter-btn active" data-filter="todos">Todos</button>
-                <div id="filterButtons" class="filter-buttons">
-                    <!-- Preenchido por JS -->
-                </div>
+            <div class="products-section-header">
+                <h3 class="section-title">Nossos Produtos</h3>
             </div>
 
             <div class="products-grid" id="productsContainer">
-                <!-- Preenchido por JS -->
+                <!-- Skeleton de carregamento: some sozinho assim que renderizarProdutos()
+                     roda pela primeira vez (ela faz container.innerHTML = ''), então não
+                     precisa de nenhuma lógica extra em JS pra remover isso. -->
+                <div class="products-skeleton" style="grid-column: 1/-1;">
+                    <img src="data:image/png;base64,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" alt="" class="products-skeleton-icon">
+                    <div class="products-skeleton-bar products-skeleton-bar-lg"></div>
+                    <div class="products-skeleton-bar products-skeleton-bar-sm"></div>
+                </div>
             </div>
 
             <button class="btn btn-secondary" id="loadMoreBtn" style="display: none; width: 100%; margin-top: 30px;">
@@ -329,20 +703,27 @@
     <section class="about" id="sobre">
         <div class="container about-content">
             <div class="about-text">
+                <span class="about-eyebrow">Nossos diferenciais</span>
                 <h3 class="section-title">Por Que Nos Escolher?</h3>
                 <div class="benefits">
                     <div class="benefit">
-                        <span class="benefit-icon">⚡</span>
+                        <span class="benefit-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        </span>
                         <h4>Entrega Rápida</h4>
                         <p>Até 30 minutos na sua porta</p>
                     </div>
                     <div class="benefit">
-                        <span class="benefit-icon">🍜</span>
+                        <span class="benefit-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="M4 12a8 8 0 0 0 16 0"/><path d="M4 12c0-1.5.7-2.7 1.6-3.6M20 12c0-3-2-5-4-6M9 5.5C9 4 10 3 11.5 3S14 4 14 5.5"/></svg>
+                        </span>
                         <h4>Comida Fresca</h4>
                         <p>Feita na hora, com ingredientes premium</p>
                     </div>
                     <div class="benefit">
-                        <span class="benefit-icon">💰</span>
+                        <span class="benefit-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 0 1 1-1h9l7.59 7.59a2 2 0 0 1 0 2.82Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+                        </span>
                         <h4>Melhor Preço</h4>
                         <p>Qualidade sem gastar muito</p>
                     </div>
@@ -354,10 +735,46 @@
     <!-- FOOTER -->
     <footer class="footer">
         <div class="container">
-            <p>&copy; 2026 <span class="js-store-name">ArretadoGo</span>. Desenvolvido com ❤️ para você.</p>
-            <p>WhatsApp: <strong id="whatsappNumber">11 99999-9999</strong></p>
+            <p>&copy; 2026 ArretadoGo. Desenvolvido com ❤️ para você.</p>
+            <div class="footer-socials">
+                <a class="social-icon-btn js-whatsapp-link" href="#" target="_blank" rel="noopener" aria-label="Fale conosco no WhatsApp">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.32A8.86 8.86 0 0 0 12.03 4C7.24 4 3.35 7.87 3.35 12.63a8.6 8.6 0 0 0 1.16 4.34L3.28 21l4.14-1.08a8.85 8.85 0 0 0 4.6 1.27h.01c4.79 0 8.68-3.87 8.68-8.63a8.55 8.55 0 0 0-2.61-6.24Zm-5.57 13.28h-.01a7.4 7.4 0 0 1-3.75-1.03l-.27-.16-2.79.73.75-2.72-.18-.28a7.16 7.16 0 0 1-1.1-3.81c0-3.96 3.25-7.19 7.26-7.19a7.24 7.24 0 0 1 7.24 7.21c0 3.96-3.25 7.25-7.15 7.25Zm3.98-5.42c-.22-.11-1.29-.63-1.49-.71-.2-.07-.35-.11-.49.11-.14.22-.56.71-.69.85-.13.14-.25.16-.47.05-.22-.11-.93-.34-1.77-1.08a6.63 6.63 0 0 1-1.22-1.5c-.13-.22-.01-.34.1-.45.1-.1.22-.25.33-.38.11-.13.14-.22.22-.36.07-.14.04-.27-.02-.38-.06-.11-.49-1.17-.67-1.6-.18-.42-.36-.36-.49-.37h-.42c-.14 0-.38.05-.58.27-.2.22-.76.74-.76 1.8s.78 2.09.89 2.23c.11.14 1.52 2.31 3.68 3.24.51.22.91.35 1.22.45.51.16.98.14 1.35.08.41-.06 1.29-.53 1.47-1.04.18-.51.18-.94.13-1.03-.05-.09-.2-.15-.42-.26Z"/></svg>
+                </a>
+                <a id="facebookLink" class="social-icon-btn" href="#" target="_blank" rel="noopener" aria-label="Siga no Facebook" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.87h2.78l-.44 2.91h-2.34V22c4.78-.76 8.44-4.92 8.44-9.94Z"/></svg>
+                </a>
+                <a id="instagramLink" class="social-icon-btn" href="#" target="_blank" rel="noopener" aria-label="Siga no Instagram" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></svg>
+                </a>
+            </div>
         </div>
     </footer>
+
+    <!-- BARRA DE NAVEGAÇÃO INFERIOR (mobile) — 5 destinos reais do sistema, sem página
+         fake nenhuma: Início, Cardápio, Carrinho (central, igual "Order" da referência),
+         Sobre e WhatsApp. Some em telas maiores que mobile (ver CSS). -->
+    <nav class="bottom-nav" id="bottomNav" aria-label="Navegação principal">
+        <a href="#" class="bottom-nav-item active" data-scroll-top>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
+            <span>Início</span>
+        </a>
+        <a href="#produtos" class="bottom-nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span>Cardápio</span>
+        </a>
+        <button type="button" class="bottom-nav-cart-btn" id="bottomNavCartBtn" aria-label="Abrir carrinho">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            <span class="bottom-nav-cart-count" id="bottomNavCartCount">0</span>
+        </button>
+        <a href="#sobre" class="bottom-nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <span>Sobre</span>
+        </a>
+        <a href="#" class="bottom-nav-item js-whatsapp-link" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            <span>WhatsApp</span>
+        </a>
+    </nav>
 
     <!-- MODAL PRODUTO -->
     <div class="modal" id="productModal">
@@ -434,6 +851,10 @@
                     <span>Entrega:</span>
                     <span id="deliveryPrice">R$ 0,00</span>
                 </div>
+                <div class="summary-row" id="cupomDescontoRow" style="display: none; color: #4CAF50;">
+                    <span>🎟️ Desconto (Cupom):</span>
+                    <span>-R$ <span id="cupomDescontoValor">0.00</span></span>
+                </div>
                 <div class="summary-row total">
                     <span>Total:</span>
                     <span id="totalPrice">R$ 0,00</span>
@@ -445,6 +866,7 @@
                     <div class="checkout-fieldset-title">👤 Seus Dados</div>
                     <input type="text" id="clientName" placeholder="Seu Nome *" class="input-field" required>
                     <input type="tel" id="clientPhone" placeholder="Seu Telefone (11 99999-9999) *" class="input-field" required>
+                    <div class="fidelidade-banner" id="fidelidadeBanner" style="display:none;"></div>
                 </div>
 
                 <div class="checkout-fieldset">
@@ -463,7 +885,52 @@
                     <select id="clientBairro" class="input-field" style="display: none;">
                         <option value="">Selecione seu bairro</option>
                     </select>
-                    <input type="text" id="clientAddress" placeholder="Endereço (rua, número, complemento)" class="input-field" style="display: none;">
+                    <div class="endereco-sugestoes-wrap">
+                        <input type="text" id="clientAddress" placeholder="Endereço (rua, número, complemento)" class="input-field" style="display: none;" autocomplete="off">
+                        <div id="enderecoSugestoesBox" class="endereco-sugestoes-box" style="display:none;"></div>
+                    </div>
+                    <div id="freteAutoStatus" class="frete-auto-badge"></div>
+                </div>
+
+                <!-- SEÇÃO DE CUPOM DE DESCONTO -->
+                <div class="cupom-box">
+                    <div class="cupom-box__header">
+                        <span class="icon-badge">🎟️</span>
+                        <h3>Cupom de Desconto</h3>
+                    </div>
+                    <div class="cupom-box__perforation"></div>
+                    <div class="cupom-box__body">
+
+                        <!-- APLICAR CUPOM -->
+                        <div id="cuponInputWrapper" style="display: block;">
+                            <label for="cuponInput" style="font-size: 12.5px; color: var(--text-light); margin-bottom: 6px; display: block; font-weight: 600;">Digite o código do cupom:</label>
+                            <div class="cupom-input-group">
+                                <input
+                                    type="text"
+                                    id="cuponInput"
+                                    placeholder="Ex: DESCONTO10"
+                                    autocomplete="off"
+                                >
+                                <button type="button" id="aplicarCuponBtn">Aplicar</button>
+                            </div>
+                        </div>
+
+                        <!-- CUPOM APLICADO -->
+                        <div id="cuponAplicadoWrapper" style="display: none;">
+                            <div class="cupom-aplicado-linha">
+                                <span class="cupom-check-badge">✓</span>
+                                <div style="flex: 1;">
+                                    <p style="margin: 0; font-weight: 700; color: #2c3e50; font-size: 14px;">
+                                        Cupom <strong id="cuponAplicadoCodigo">—</strong> aplicado
+                                    </p>
+                                    <p style="margin: 2px 0 0 0; font-size: 12.5px; color: var(--text-light);">
+                                        Desconto de <strong id="cuponAplicadoDesconto">—</strong> · você economiza R$ <span id="cuponAplicadoEconomia">0.00</span>
+                                    </p>
+                                </div>
+                                <button type="button" id="removerCuponBtn" class="cupom-remover-btn" aria-label="Remover cupom">✕</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="checkout-fieldset">
@@ -497,6 +964,24 @@
                     <div class="checkout-fieldset-title">📝 Observações</div>
                     <textarea id="orderObservations" placeholder="Ex: sem cebola, ponto da carne, etc." class="input-field" style="margin-bottom: 0;"></textarea>
                 </div>
+
+                <div class="checkout-fieldset">
+                    <label class="checkout-opt-in">
+                        <input type="checkbox" id="aceitaPromocaoInput">
+                        <span>Quero receber promoções e novidades no WhatsApp</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Tela de espera do pagamento online — some/aparece via JS (iniciarEsperaPagamento
+                 em app.js), no lugar do formulário de checkout, enquanto o cliente paga
+                 numa aba do PagBank e a gente aguarda o webhook confirmar. -->
+            <div class="pagamento-online-wait" id="pagamentoOnlineWait" style="display:none;">
+                <div class="pagamento-online-spinner"></div>
+                <p class="pagamento-online-title" id="pagamentoOnlineTitulo">Aguardando confirmação do pagamento...</p>
+                <p class="pagamento-online-sub" id="pagamentoOnlineSub">Finalize o pagamento na aba que abrimos. Assim que confirmar, seu pedido segue automaticamente pra loja.</p>
+                <a href="#" target="_blank" id="pagamentoOnlineReabrirLink" class="pagamento-online-reabrir">Reabrir página de pagamento</a>
+                <button type="button" class="pagamento-online-cancelar" id="pagamentoOnlineCancelarBtn">Cancelar e voltar</button>
             </div>
         </div>
 
@@ -520,7 +1005,8 @@
     <!-- TOAST NOTIFICAÇÃO -->
     <div class="toast" id="toast"></div>
 
-    <script src="firebase-config.js"></script>
-    <script src="app.js"></script>
+    <script src="firebase-config.js?v=3"></script>
+    <script src="geo-calculo.js?v=3"></script>
+    <script src="app.js?v=3"></script>
 </body>
 </html>

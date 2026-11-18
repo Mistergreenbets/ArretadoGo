@@ -9,12 +9,12 @@ importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-comp
 // Mesma configuração do firebase-config.js (esses valores não são secretos — já ficam
 // visíveis em qualquer app Firebase rodando no navegador do cliente).
 firebase.initializeApp({
-  apiKey: "AIzaSyClhkIOZGJWP6m5mH1sjK2k2_QXBMornC0",
-  authDomain: "projeto-delivery-b37e7.firebaseapp.com",
-  projectId: "projeto-delivery-b37e7",
-  storageBucket: "projeto-delivery-b37e7.firebasestorage.app",
-  messagingSenderId: "80008327269",
-  appId: "1:80008327269:web:d3539309584adf0d70568c"
+  apiKey: "AIzaSyBcjz6lJ2S3Cex3hheDsIbFf6fz3K1-8mE",
+  authDomain: "arretadogo.firebaseapp.com",
+  projectId: "arretadogo",
+  storageBucket: "arretadogo.firebasestorage.app",
+  messagingSenderId: "907455433951",
+  appId: "1:907455433951:web:1fd1298c7fd730aec32d6a"
 });
 
 const messaging = firebase.messaging();

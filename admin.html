@@ -7,7 +7,7 @@
     <link rel="icon" type="image/png" href="favicon.png?v=1">
     <link rel="icon" href="favicon.ico?v=1" sizes="any">
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
-    <link rel="stylesheet" href="admin-style.css?v=2">
+    <link rel="stylesheet" href="admin-style.css?v=3">
     <style>
         .login-screen {
             position: fixed;
@@ -154,21 +154,30 @@
             min-width: 140px;
         }
         .motoboy-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 10px 14px;
+            padding: 12px 14px;
             background: #f7f7f7;
             border-radius: 8px;
             border: 1px solid #eee;
             margin-bottom: 8px;
+        }
+        .motoboy-item-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
         }
         .motoboy-item .motoboy-info strong {
             display: block;
         }
         .motoboy-item .motoboy-info small {
             color: #888;
+        }
+        .motoboy-badges {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
         }
         .motoboy-status-badge {
             font-size: 12px;
@@ -183,6 +192,56 @@
         .motoboy-status-badge.inativo {
             background: #fee2e2;
             color: #b91c1c;
+        }
+        .motoboy-online-badge {
+            font-size: 12px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+        .motoboy-online-badge.online {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+        .motoboy-online-badge.offline {
+            background: #f1f1f1;
+            color: #888;
+        }
+        .motoboy-mini-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .motoboy-mini-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            background: #fff;
+            border: 1px solid #eee;
+            border-left: 3px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+        .motoboy-mini-stat-label {
+            font-size: 11px;
+            color: #888;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .motoboy-mini-stat-value {
+            font-size: 17px;
+            font-weight: 700;
+            color: #222;
+        }
+        .mini-stat-pedidos { border-left-color: #f59e0b; }
+        .mini-stat-faturamento { border-left-color: #16a34a; }
+        .mini-stat-tempo { border-left-color: #0ea5e9; }
+        .motoboy-em-rota {
+            margin-top: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--primary-color, #C20000);
         }
         .promo-item {
             display: flex;
@@ -263,7 +322,187 @@
             .toggle-sidebar {
                 display: block !important;
             }
+            .toggle-sidebar-abrir {
+                display: block !important;
+                background: none;
+                border: none;
+                font-size: 22px;
+                cursor: pointer;
+                margin-right: 8px;
+                color: #1a1a1a;
+            }
+            .admin-header {
+                display: flex;
+                align-items: center;
+            }
+            .admin-header h1 {
+                flex: 1;
+            }
+            .sidebar-backdrop.active {
+                display: block !important;
+            }
+            .motoboy-mini-stats {
+                grid-template-columns: 1fr 1fr;
+            }
+            .motoboy-mini-stat:last-child {
+                grid-column: 1 / -1;
+            }
         }
+
+        /* ================= HISTÓRICO DO CLIENTE (modal) ================= */
+        #modalHistoricoCliente .modal-content {
+            max-width: 560px;
+            padding: 0;
+            overflow: hidden;
+        }
+        .hist-header {
+            padding: 22px 24px 18px;
+            background: linear-gradient(135deg, var(--primary-color), color-mix(in srgb, var(--primary-color) 70%, #000));
+            color: #fff;
+        }
+        .hist-header-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .hist-header-nome {
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+            line-height: 1.25;
+        }
+        .hist-header-sub {
+            font-size: 12.5px;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+        .hist-header-close {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255,255,255,0.16);
+            color: #fff;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .hist-header-close:hover { background: rgba(255,255,255,0.28); }
+
+        .hist-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .hist-stat {
+            background: rgba(255,255,255,0.12);
+            border-radius: 12px;
+            padding: 10px 14px;
+        }
+        .hist-stat strong {
+            display: block;
+            font-size: 19px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+        }
+        .hist-stat span {
+            font-size: 11px;
+            opacity: 0.82;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .hist-fidelidade {
+            margin: 16px 24px 0;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--primary-color) 8%, #fff);
+            border: 1px solid color-mix(in srgb, var(--primary-color) 22%, #fff);
+        }
+        .hist-fidelidade-topo {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 7px;
+        }
+        .hist-fidelidade-barra {
+            height: 7px;
+            border-radius: 20px;
+            background: var(--border-color);
+            overflow: hidden;
+        }
+        .hist-fidelidade-barra-fill {
+            height: 100%;
+            border-radius: 20px;
+            background: var(--primary-color);
+            transition: width 0.4s ease;
+        }
+        .hist-fidelidade.pronta {
+            background: color-mix(in srgb, #2E7D32 10%, #fff);
+            border-color: color-mix(in srgb, #2E7D32 25%, #fff);
+        }
+        .hist-fidelidade.pronta .hist-fidelidade-topo { color: #2E7D32; }
+        .hist-fidelidade.pronta .hist-fidelidade-barra-fill { background: #2E7D32; }
+
+        .hist-lista {
+            padding: 6px 24px 22px;
+            max-height: 46vh;
+            overflow-y: auto;
+        }
+        .hist-lista-vazio {
+            text-align: center;
+            padding: 36px 20px;
+            color: var(--text-light);
+            font-size: 13.5px;
+        }
+        .hist-pedido {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 13px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .hist-pedido:last-child { border-bottom: none; }
+        .hist-pedido-info { flex: 1; min-width: 0; }
+        .hist-pedido-codigo {
+            font-size: 13.5px;
+            font-weight: 700;
+            letter-spacing: -0.1px;
+        }
+        .hist-pedido-meta {
+            font-size: 11.5px;
+            color: var(--text-light);
+            margin-top: 2px;
+        }
+        .hist-pedido-valor {
+            font-size: 14px;
+            font-weight: 800;
+            text-align: right;
+            white-space: nowrap;
+        }
+        .hist-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10.5px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 20px;
+            margin-top: 4px;
+        }
+        .hist-status-pill::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+        .hist-status-pill.st-entregue { color: #2E7D32; background: rgba(46,125,50,0.12); }
+        .hist-status-pill.st-cancelado { color: #C62828; background: rgba(198,40,40,0.12); }
+        .hist-status-pill.st-outro { color: #8a6d00; background: rgba(180,140,0,0.12); }
     </style>
 </head>
 <body>
@@ -288,6 +527,7 @@
     </div>
 
     <div class="admin-container" id="adminContainer" style="display:none;">
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
         <!-- SIDEBAR -->
         <aside class="sidebar">
             <div class="sidebar-header">
@@ -307,10 +547,19 @@
                 <a href="#" class="nav-item" data-section="motoboys">
                     🛵 Motoboys
                 </a>
+                <a href="#" class="nav-item" data-section="cozinha">
+                    👨‍🍳 Cozinha
+                </a>
                 <a href="#" class="nav-item" data-section="configuracoes">
                     ⚙️ Configurações
                 </a>
-                <a href="index.html" class="nav-item logout">
+                <a href="#" class="nav-item" data-section="cupons">
+                    🎟️ Cupons de Desconto
+                </a>
+                <a href="#" class="nav-item" data-section="clientes">
+                    👥 Clientes
+                </a>
+                <a href="index.html" id="linkVoltarLoja" class="nav-item logout">
                     🚪 Voltar à Loja
                 </a>
             </nav>
@@ -320,7 +569,10 @@
         <main class="admin-main">
             <!-- HEADER -->
             <header class="admin-header">
-                <h1>Painel de Administração</h1>
+                <div class="admin-header-title-row">
+                    <button class="toggle-sidebar toggle-sidebar-abrir" id="abrirSidebarBtn" aria-label="Abrir menu">☰</button>
+                    <h1>Painel de Administração</h1>
+                </div>
                 <div class="header-actions">
                     <span class="user-info" id="userInfo">Conectado</span>
                     <button class="btn-logout" id="logoutBtn">Sair</button>
@@ -536,6 +788,9 @@
                         <option value="mes">Este Mês</option>
                     </select>
                 </div>
+                <small style="display:block; margin: -10px 0 16px; color:#999;">
+                    Mostrando os últimos 60 dias. Pra períodos mais antigos, use o relatório em Excel (Dashboard → Relatórios).
+                </small>
 
                 <div class="orders-list" id="ordersList">
                     <p style="text-align: center; padding: 20px;">Nenhum pedido ainda 📭</p>
@@ -576,6 +831,40 @@
                 <div id="motoboysList" class="dynamic-list"></div>
             </section>
 
+            <!-- SEÇÃO COZINHA -->
+            <section class="section" id="cozinhaSection" style="display: none;">
+                <div class="section-header">
+                    <h2>Cozinha</h2>
+                </div>
+
+                <p style="color:#888; font-size: 13px; margin-bottom: 16px;">
+                    Cadastre aqui a equipe que vai acessar <a href="cozinha.html" target="_blank">cozinha.html</a> —
+                    uma tela separada, só com os pedidos, pra marcar "Iniciar Preparo" e "Pronto".
+                    Desativar bloqueia o acesso ao painel, mas não apaga o login — se quiser reaproveitar
+                    o e-mail, é preciso remover a conta direto no Firebase Console (Authentication).
+                </p>
+
+                <form id="novaCozinhaForm" class="settings-form" style="margin-bottom: 24px;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="cozinhaNome">Nome</label>
+                            <input type="text" id="cozinhaNome" class="input-field" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="cozinhaEmail">E-mail de login</label>
+                            <input type="email" id="cozinhaEmail" class="input-field" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="cozinhaSenha">Senha (mínimo 6 caracteres)</label>
+                        <input type="password" id="cozinhaSenha" class="input-field" minlength="6" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="addCozinhaBtn">+ Cadastrar na Cozinha</button>
+                </form>
+
+                <div id="cozinhaListaAdmin" class="dynamic-list"></div>
+            </section>
+
             <!-- SEÇÃO CONFIGURAÇÕES -->
             <section class="section" id="configuracoesSection" style="display: none;">
                 <div class="section-header">
@@ -589,9 +878,43 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="storeLogoUrl">Logo da loja (link da imagem)</label>
+                        <small style="display:block; margin-bottom:8px; color:#888;">Aparece redonda, centralizada no topo da sua loja. Cole o link de uma imagem quadrada (ex: hospedada no Imgur, Google Drive com link público, etc). Deixe em branco pra usar um círculo com a inicial do nome da loja.</small>
+                        <input type="url" id="storeLogoUrl" class="input-field" placeholder="https://exemplo.com/minha-logo.png">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="storeGreeting">Saudação completa (aparece no topo do site, abaixo da logo)</label>
+                        <small style="display:block; margin-bottom:8px; color:#888;">Digite o texto inteiro que deve aparecer, incluindo o nome — ex: "Olá 👋, ArretadoGo". Esse texto não é combinado automaticamente com o nome da loja.</small>
+                        <input type="text" id="storeGreeting" class="input-field" placeholder="Olá 👋, ArretadoGo">
+                    </div>
+
+                    <div class="form-group">
                         <label for="storePhone">WhatsApp para Pedidos:</label>
                         <input type="tel" id="storePhone" class="input-field" placeholder="55 11 99999-9999">
                     </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
+
+                    <div class="form-group">
+                        <label>📱 Redes Sociais (ícones no rodapé da loja)</label>
+                        <small style="display:block; margin-bottom:8px; color:#888;">
+                            O ícone do WhatsApp usa o número configurado acima. Facebook e Instagram só aparecem no rodapé se o link for preenchido — deixe em branco pra esconder.
+                        </small>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="socialFacebook">Link do Facebook</label>
+                            <input type="text" id="socialFacebook" class="input-field" placeholder="https://facebook.com/sualoja">
+                        </div>
+                        <div class="form-group">
+                            <label for="socialInstagram">Link do Instagram</label>
+                            <input type="text" id="socialInstagram" class="input-field" placeholder="https://instagram.com/sualoja">
+                        </div>
+                    </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
 
                     <div class="form-group">
                         <label for="deliveryFee">Taxa de Entrega (R$):</label>
@@ -716,6 +1039,94 @@
                     <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
 
                     <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="calculoKmAtivo" style="width:auto; margin-right:8px;">
+                            📍 Calcular frete automaticamente pela distância (km)
+                        </label>
+                        <small style="display:block; margin-bottom:12px; color:#888;">
+                            Quando ativo, o cliente digita o endereço e a taxa é calculada sozinha em segundos.
+                            Se não conseguir calcular (endereço não encontrado, fora da área, etc.), o cliente
+                            cai automaticamente na lista de bairros acima — o checkout nunca trava.
+                        </small>
+
+                        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+                            <input type="number" id="lojaLat" class="input-field" placeholder="Latitude da loja" step="0.000001" style="max-width:180px;">
+                            <input type="number" id="lojaLng" class="input-field" placeholder="Longitude da loja" step="0.000001" style="max-width:180px;">
+                            <button type="button" class="btn btn-secondary" id="usarLocalizacaoBtn">📍 Usar minha localização atual</button>
+                        </div>
+                        <label style="margin-top:4px;">Cidade / UF da loja</label>
+                        <small style="display:block; margin-bottom:8px; color:#888;">
+                            Obrigatório pro cálculo funcionar direito — sem isso, um endereço incompleto (ex:
+                            sem "Rua", sem bairro) pode ser confundido com uma rua de nome parecido em outra
+                            cidade, calculando uma distância errada.
+                        </small>
+                        <input type="text" id="lojaCidadeUf" class="input-field" placeholder="Ex: Fortaleza, CE" style="max-width:300px;">
+                        <small id="localizacaoStatus" style="display:block; margin-bottom:12px; color:#888;"></small>
+
+                        <label style="margin-top:8px;">Valor por km rodado</label>
+                        <small style="display:block; margin-bottom:8px; color:#888;">
+                            A taxa é calculada automaticamente: distância (km) × valor abaixo, com piso na
+                            taxa mínima — nunca cobra menos que ela, mesmo pra endereço colado na loja.
+                        </small>
+                        <div style="display:flex; align-items:center; gap:16px; margin-bottom:12px; flex-wrap:wrap;">
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <span>R$</span>
+                                <input type="number" id="valorPorKm" class="input-field" placeholder="Ex: 2.00" step="0.01" min="0" style="max-width:140px;">
+                                <span>por km</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <span>Taxa mínima R$</span>
+                                <input type="number" id="taxaMinimaKm" class="input-field" placeholder="Ex: 6.00" step="0.01" min="0" style="max-width:140px;">
+                            </div>
+                        </div>
+
+                        <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+
+                        <details style="margin-top:16px;">
+                            <summary style="cursor:pointer; color:#888;">Configuração avançada (provedor de geocoding)</summary>
+                            <div style="padding-top:12px;">
+                                <label>Provedor</label>
+                                <select id="provedorGeocoding" class="input-field" style="max-width:260px;">
+                                    <option value="nominatim">Nominatim / OpenStreetMap (grátis — padrão)</option>
+                                    <option value="google">Google Maps (pago, precisa de chave)</option>
+                                </select>
+                                <small style="display:block; margin:8px 0 4px; color:#888;">
+                                    Chave da API do Google Maps (deixe em branco enquanto usar Nominatim):
+                                </small>
+                                <input type="password" id="googleApiKey" class="input-field" placeholder="Chave do Google Maps (opcional)" style="max-width:400px;">
+                            </div>
+                        </details>
+
+                        <details style="margin-top:16px;" open>
+                            <summary style="cursor:pointer; color:#888;">Banco de ruas (prévia de endereço enquanto o cliente digita)</summary>
+                            <div style="padding-top:12px;">
+                                <small style="display:block; margin-bottom:10px; color:#888;">
+                                    Evita erro de grafia (ex: "Rua Gerardo de Freitas" vs "Rua Gerardo Freitas"):
+                                    enquanto o cliente digita, aparece uma lista de ruas reais pra ele escolher,
+                                    igual apps de transporte. Isso roda 100% local depois de gerado (sem API, sem
+                                    custo) — só precisa clicar em um botão uma vez (ou de novo se mudar a
+                                    localização/raio de entrega).
+                                </small>
+
+                                <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+                                    <span>Raio de entrega:</span>
+                                    <input type="number" id="raioBancoRuas" class="input-field" value="15" min="1" max="30" step="1" style="max-width:90px;">
+                                    <span>km</span>
+                                </div>
+
+                                <button type="button" class="btn btn-primary" id="gerarBancoRuasBtn">🗺️ Gerar banco de ruas automaticamente</button>
+                                <small style="display:block; margin-top:8px; color:#888;">
+                                    Usa a latitude/longitude da loja preenchidas acima. Pode levar de 10 a 40
+                                    segundos dependendo do raio — não feche a página enquanto processa.
+                                </small>
+                                <small id="statusBancoRuas" style="display:block; margin-top:8px; color:#888;"></small>
+                            </div>
+                        </details>
+                    </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
+
+                    <div class="form-group">
                         <label>🎉 Banner Rotativo de Promoções (aparece na loja)</label>
                         <small style="display:block; margin-bottom:8px; color:#888;">Cada promoção ativa vira um slide do banner rotativo na página inicial. Desmarque "Ativa" para tirar uma promoção do ar sem apagá-la.</small>
                         <div id="promocoesList" class="dynamic-list"></div>
@@ -731,9 +1142,313 @@
                         </div>
                     </div>
 
+                    <hr style="margin: 28px 0; border: none; border-top: 1px solid #eee;">
+
+                    <h2 style="margin-bottom: 6px;">🎁 Fidelidade</h2>
+                    <small style="display:block; margin-bottom:16px; color:#888;">
+                        A cada X pedidos entregues (que valham pelo menos o valor mínimo), o cliente ganha um
+                        desconto que é aplicado sozinho no carrinho dele automaticamente, sem precisar digitar
+                        cupom nenhum.
+                    </small>
+                    <div class="form-group">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="fidelidadeAtivo" style="width:18px; height:18px;">
+                            Ativar programa de fidelidade nesta loja
+                        </label>
+                    </div>
+                    <div class="dynamic-add-row">
+                        <div class="form-group" style="flex:1; min-width:140px;">
+                            <label for="fidelidadePedidos">Pedidos necessários</label>
+                            <input type="number" id="fidelidadePedidos" class="input-field" min="2" max="100" value="10">
+                        </div>
+                        <div class="form-group" style="flex:1; min-width:140px;">
+                            <label for="fidelidadeValorMinimo">Valor mínimo por pedido (R$)</label>
+                            <input type="number" id="fidelidadeValorMinimo" class="input-field" min="0" step="0.01" value="65">
+                        </div>
+                        <div class="form-group" style="flex:1; min-width:140px;">
+                            <label for="fidelidadeDesconto">Desconto da recompensa (%)</label>
+                            <input type="number" id="fidelidadeDesconto" class="input-field" min="1" max="100" value="25">
+                        </div>
+                    </div>
+
                     <button type="submit" class="btn btn-primary" style="margin-top: 20px;">Salvar Configurações</button>
                 </form>
+
+                <hr style="margin: 32px 0; border: none; border-top: 1px solid #eee;">
+
+                <div class="settings-form" id="pagamentoOnlineCard">
+                    <h2 style="margin-bottom: 6px;">💳 Pagamento Online (cobrança automática)</h2>
+
+                    <div style="background:#fff3cd; border:1px solid #ffe69c; border-radius:8px; padding:12px 14px; margin-bottom:18px; font-size:13px; color:#664d03;">
+                        ⚠️ <strong>Indisponível no momento.</strong> A parte de cobrança automática (Cloud Function
+                        que abre o checkout no PagBank) está desligada enquanto o projeto roda no plano gratuito.
+                        Não dá pra ativar esta opção agora — se você já tinha ativado antes, desative abaixo pra
+                        não perder pedidos: o cliente ficaria preso na tela de pagamento esperando uma confirmação
+                        que nunca chega.
+                    </div>
+
+                    <small style="display:block; margin-bottom:18px; color:#888;">
+                        Quando disponível: o cliente paga Pix, Crédito ou Débito direto no checkout — o dinheiro cai
+                        na SUA conta PagBank, não passa pela plataforma. O pedido só aparece na cozinha/painel
+                        depois que o PagBank confirma o pagamento. "Dinheiro" na entrega continua funcionando
+                        do jeito de sempre, mesmo com isso ativado.
+                    </small>
+
+                    <div class="form-group">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="pagamentoOnlineAtivo" style="width:18px; height:18px;">
+                            Ativar cobrança automática nesta loja
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="pagamentoOnlineToken">Token de acesso PagBank</label>
+                        <small style="display:block; margin-bottom:8px; color:#888;" id="pagamentoOnlineTokenStatus">Carregando...</small>
+                        <input type="password" id="pagamentoOnlineToken" class="input-field" placeholder="Indisponível no momento" autocomplete="off" disabled>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="pagamentoOnlineAmbiente">Ambiente</label>
+                        <select id="pagamentoOnlineAmbiente" class="input-field" disabled>
+                            <option value="sandbox">Sandbox (testes, sem dinheiro real)</option>
+                            <option value="producao">Produção (cobra de verdade)</option>
+                        </select>
+                    </div>
+
+                    <button type="button" class="btn btn-primary" id="salvarPagamentoOnlineBtn">Salvar Pagamento Online</button>
+                </div>
             </section>
+
+            <section class="section" id="cuponsSection" style="display: none;">
+                <div class="section-header">
+                    <div>
+                        <h2>🎟️ Cupons de Desconto</h2>
+                        <p style="color: var(--text-light); margin-top: 4px; font-size: 14px;">Crie e gerencie cupons de desconto para seus clientes</p>
+                    </div>
+                    <button class="btn btn-primary" id="novosCupomBtn">➕ Novo Cupom</button>
+                </div>
+
+    <!-- FILTRO E BUSCA -->
+    <div class="admin-toolbar" style="margin-bottom: 20px;">
+        <input type="text" id="cuponSearchInput" class="input-field" placeholder="Buscar por código ou nome..." style="max-width: 300px;">
+        <select id="cuponStatusFilter" class="input-field" style="max-width: 150px;">
+            <option value="">Todos os cupons</option>
+            <option value="ativo">Ativos</option>
+            <option value="inativo">Inativos</option>
+            <option value="expirado">Expirados</option>
+        </select>
+    </div>
+
+    <!-- LISTA DE CUPONS -->
+    <div id="cuponsList" class="table-container">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Nome</th>
+                    <th>Desconto</th>
+                    <th>Usos</th>
+                    <th>Mínimo</th>
+                    <th>Validade</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody id="cuponsTableBody">
+                <tr><td colspan="8" style="text-align: center; padding: 30px; color: var(--text-light);">Carregando cupons...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ESTATÍSTICAS -->
+    <div class="dashboard-cards" style="margin-top: 40px;">
+        <div class="dashboard-card">
+            <span class="dashboard-card-label">🎟️ Total de Cupons</span>
+            <span class="dashboard-card-value" id="statTotalCupons">—</span>
+        </div>
+        <div class="dashboard-card">
+            <span class="dashboard-card-label">✅ Cupons Ativos</span>
+            <span class="dashboard-card-value" id="statCuponsAtivos">—</span>
+        </div>
+        <div class="dashboard-card">
+            <span class="dashboard-card-label">📊 Total de Usos</span>
+            <span class="dashboard-card-value" id="statTotalUsos">—</span>
+        </div>
+    </div>
+
+    <!-- CUPONS MAIS USADOS -->
+    <div id="cuponsMaisUsadosWrapper" style="margin-top: 40px; display: none;">
+        <h3 style="margin-bottom: 16px;">🏆 Cupons Mais Usados</h3>
+        <div class="table-container">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Desconto</th>
+                        <th>Usos</th>
+                    </tr>
+                </thead>
+                <tbody id="cuponsMaisUsadosBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="section" id="clientesSection" style="display: none;">
+    <div class="section-header">
+        <div>
+            <h2>👥 Clientes</h2>
+            <p style="color: var(--text-light); margin-top: 4px; font-size: 14px;">
+                Cadastro automático — todo pedido feito preenche essa lista sozinho, com base no nome/telefone/endereço digitados no checkout.
+            </p>
+        </div>
+    </div>
+
+    <!-- FILTRO, BUSCA E ORDENAÇÃO -->
+    <div class="admin-toolbar" style="margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+        <input type="text" id="clienteSearchInput" class="input-field" placeholder="Buscar por nome ou telefone..." style="max-width: 280px;">
+        <select id="clienteFiltro" class="input-field" style="max-width: 200px;">
+            <option value="">Todos os clientes</option>
+            <option value="aceitaPromocao">Só quem aceita contato</option>
+            <option value="inativos30">Sem comprar há 30+ dias</option>
+        </select>
+        <select id="clienteOrdenar" class="input-field" style="max-width: 200px;">
+            <option value="recente">Compra mais recente</option>
+            <option value="pedidos">Mais pedidos</option>
+            <option value="gasto">Maior total gasto</option>
+        </select>
+        <span id="clientesContagem" style="color: var(--text-light); font-size: 13px; margin-left: auto;"></span>
+    </div>
+
+    <!-- MENSAGEM RÁPIDA — usada pelo botão 📣 de cada linha (contato individual, não em
+         massa: WhatsApp bloqueia número que manda mensagem repetida pra muita gente que
+         não iniciou a conversa, não vale o risco). -->
+    <div class="settings-form" id="promoWhatsAppCard" style="margin-bottom: 24px;">
+        <h3 style="margin-bottom: 6px;">💬 Mensagem rápida</h3>
+        <small style="display:block; margin-bottom:14px; color:#888;">
+            Escreva aqui uma mensagem que você usa com frequência (uma promoção, um aviso). O botão 📣 na
+            linha de cada cliente abre o WhatsApp dele já com esse texto preenchido — você decide, um por
+            um, pra quem vale a pena mandar.
+        </small>
+        <div class="form-group" style="margin-bottom: 0;">
+            <label for="promoMensagem">Mensagem</label>
+            <textarea id="promoMensagem" class="input-field" rows="3" placeholder="Ex: 🔥 Hoje é dia de 20% OFF em todo o cardápio! Peça já: [link da loja]"></textarea>
+        </div>
+    </div>
+
+    <!-- LISTA DE CLIENTES -->
+    <div id="clientesList" class="table-container">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Telefone</th>
+                    <th>Endereço</th>
+                    <th>Pedidos</th>
+                    <th>Total gasto</th>
+                    <th>Última compra</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody id="clientesTableBody">
+                <tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-light);">Carregando clientes...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- MODAL — HISTÓRICO DE PEDIDOS DE UM CLIENTE -->
+<div class="modal" id="modalHistoricoCliente">
+    <div class="modal-content">
+        <div id="historicoClienteBody"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL PARA CRIAR/EDITAR CUPOM -->
+<div class="modal" id="cuponModal">
+    <div class="modal-content modal-lg">
+        <div class="modal-header">
+            <h2 id="cuponModalTitle">Novo Cupom</h2>
+            <button class="modal-close" id="closeCuponModal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="cuponForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="cuponCodigo">Código do Cupom *</label>
+                        <input type="text" id="cuponCodigo" class="input-field" placeholder="EX: DESCONTO10" required>
+                        <small style="display: block; color: var(--text-light); margin-top: 4px;">Será convertido para maiúsculas automaticamente</small>
+                        <span class="field-error" id="errCuponCodigo"></span>
+                    </div>
+                    <div class="form-group">
+                        <label for="cuponNome">Nome do Cupom *</label>
+                        <input type="text" id="cuponNome" class="input-field" placeholder="Ex: Black Friday 2024" required>
+                        <span class="field-error" id="errCuponNome"></span>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="cuponDesconto">Desconto (%) *</label>
+                        <input type="number" id="cuponDesconto" class="input-field" placeholder="10" min="0" max="100" step="0.01" required>
+                        <small style="display: block; color: var(--text-light); margin-top: 4px;">Percentual de desconto (ex: 10 = 10%)</small>
+                        <span class="field-error" id="errCuponDesconto"></span>
+                    </div>
+                    <div class="form-group">
+                        <label for="cuponMinimo">Valor Mínimo do Carrinho (R$)</label>
+                        <input type="number" id="cuponMinimo" class="input-field" placeholder="0.00" min="0" step="0.01">
+                        <small style="display: block; color: var(--text-light); margin-top: 4px;">Deixe em branco ou 0 = sem mínimo</small>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="cuponUsosMaximos">Usos Máximos</label>
+                        <input type="number" id="cuponUsosMaximos" class="input-field" placeholder="100" min="0">
+                        <small style="display: block; color: var(--text-light); margin-top: 4px;">Deixe em branco = ilimitado</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="cuponDataExpiracao">Data de Expiração</label>
+                        <input type="date" id="cuponDataExpiracao" class="input-field">
+                        <small style="display: block; color: var(--text-light); margin-top: 4px;">Deixe em branco = sem expiração</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="cuponDescricao">Descrição</label>
+                    <textarea id="cuponDescricao" class="input-field" rows="2" placeholder="Ex: Cupom válido para primeira compra"></textarea>
+                </div>
+
+                <div class="form-group checkbox">
+                    <input type="checkbox" id="cuponAtivo" checked>
+                    <label for="cuponAtivo">Cupom Ativo</label>
+                </div>
+
+                <!-- INFORMAÇÕES DE USO -->
+                <div id="cuponInfoWrapper" style="display: none; background: var(--bg-light); padding: 16px; border-radius: 8px; margin-top: 20px;">
+                    <p style="margin: 0 0 12px 0; font-weight: 500;">📊 Informações de Uso:</p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div>
+                            <small style="color: var(--text-light);">Criado em</small>
+                            <p id="cuponDataCriacao" style="margin: 4px 0 0 0; font-weight: 500;">—</p>
+                        </div>
+                        <div>
+                            <small style="color: var(--text-light);">Usos até agora</small>
+                            <p id="cuponUsosAtuais" style="margin: 4px 0 0 0; font-weight: 500; color: var(--primary-color);">—</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="saveCuponBtn">Salvar Cupom</button>
+                    <button type="button" class="btn btn-secondary" id="cancelCuponBtn">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
         </main>
     </div>
 
@@ -940,8 +1655,8 @@
     <!-- ExcelJS: usado pra GERAR o relatório com formatação de verdade (cor, borda, negrito) —
          o SheetJS acima não escreve estilo em .xlsx na versão gratuita. -->
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-    <script src="firebase-config.js"></script>
-    <script src="pedido-status-utils.js"></script>
-    <script src="admin.js"></script>
+    <script src="firebase-config.js?v=3"></script>
+    <script src="pedido-status-utils.js?v=2"></script>
+    <script src="admin.js?v=3"></script>
 </body>
 </html>

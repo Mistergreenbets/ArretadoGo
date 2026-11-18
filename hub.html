@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArretadoGo - Todas as lojas</title>
+
+    <meta name="description" content="Encontre lanchonetes, pizzarias e restaurantes perto de você. Peça direto pelo cardápio digital, com entrega rápida.">
+
+    <!-- Open Graph (preview ao compartilhar no WhatsApp/Instagram/Facebook) -->
+    <meta property="og:title" content="ArretadoGo - Todas as lojas">
+    <meta property="og:description" content="Encontre lanchonetes, pizzarias e restaurantes perto de você.">
+    <meta property="og:type" content="website">
+
+    <link rel="icon" type="image/png" href="favicon.png?v=1">
+    <link rel="icon" href="favicon.ico?v=1" sizes="any">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
+
+    <link rel="stylesheet" href="style.css?v=2">
+    <style>
+        /* ================= HUB — página central de lojas =================
+           Usa as MESMAS classes/variáveis de cor de style.css que o index.html (header
+           branco fixo, --primary-color, --accent-color, --light-bg etc.) — só o conteúdo
+           abaixo do carrossel muda (grid de lojas em vez de grid de produtos), pra manter
+           a mesma identidade visual entre o hub e a loja individual. */
+
+        /* ---- Skeleton de tela cheia (aparece antes dos dados do hub carregarem) ----
+           Logo da plataforma apagada (mesmo favicon.png do header, só que em tom de cinza
+           clarinho) + duas barrinhas no lugar de texto, pulsando. Some com um fade suave
+           assim que os banners e as lojas terminam de carregar (ver hub.js). */
+        .hub-loading-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 999;
+            background: var(--white);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            transition: opacity 0.4s ease;
+        }
+        .hub-loading-overlay.hub-loading-escondido {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .hub-loading-logo-wrap {
+            width: 168px;
+            height: 168px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--light-bg);
+            animation: hub-loading-pulse 1.6s ease-in-out infinite;
+        }
+        .hub-loading-logo-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+            filter: grayscale(1);
+            opacity: 0.22;
+        }
+        @keyframes hub-loading-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .hub-loading-bar {
+            height: 14px;
+            border-radius: 20px;
+            background: linear-gradient(90deg, var(--light-bg) 25%, var(--border-color) 50%, var(--light-bg) 75%);
+            background-size: 200% 100%;
+            animation: hub-skeleton-pulse 1.4s ease-in-out infinite;
+        }
+        .hub-loading-bar-1 { width: min(78vw, 300px); }
+        .hub-loading-bar-2 { width: min(45vw, 170px); }
+
+        /* ---- Logo da plataforma no header (mesmo tratamento visual da .store-logo-circle
+           do index.html, só que fixa — o hub não pertence a uma loja específica) ---- */
+        .hub-plataforma-logo {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border: 3px solid var(--accent-color);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            color: #fff;
+            font-size: 22px;
+            font-weight: 800;
+            overflow: hidden;
+        }
+        .hub-plataforma-logo img { width: 100%; height: 100%; object-fit: cover; }
+
+        /* Banner do hub: mantém a imagem original inteira, sem cortar nenhuma parte
+           (mesmo comportamento do carrossel de promoções do index.html — a altura do
+           quadro acompanha a proporção real de cada imagem). A faixa que sobrava embaixo
+           era só o espaçamento da seção; reduzido abaixo, sem mexer na imagem. */
+        #hubBannerSection {
+            padding-bottom: 6px;
+        }
+        .hub-lojas-section {
+            padding: 20px 0 24px;
+            background: var(--white);
+        }
+        .hub-lojas-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 4px;
+        }
+        .hub-lojas-contagem {
+            font-size: 13px;
+            color: var(--text-light);
+            font-weight: 600;
+        }
+        .hub-lojas-sub {
+            color: var(--text-light);
+            font-size: 14px;
+            margin-bottom: 18px;
+        }
+
+        .hub-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 16px;
+        }
+        @media (max-width: 480px) {
+            .hub-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+        }
+
+        /* Card de loja — mesmo tratamento de .product-card (fundo branco, raio, sombra,
+           hover levantando) aplicado a uma logo circular + nome + selo, em vez de foto do
+           produto — mantém a "textura" igual à do restante do site. */
+        .hub-store-card {
+            background: var(--white);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            padding: 16px 14px;
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 8px;
+            transition: var(--transition);
+        }
+        .hub-store-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .hub-store-logo {
+            width: 68px;
+            height: 68px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid var(--accent-color);
+            background: var(--white);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .hub-store-logo-fallback {
+            width: 68px;
+            height: 68px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            color: #fff;
+            font-size: 26px;
+            font-weight: 800;
+            border: 3px solid var(--accent-color);
+        }
+
+        .hub-store-nome {
+            font-weight: 800;
+            font-size: 14.5px;
+            letter-spacing: -0.2px;
+            line-height: 1.25;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .hub-store-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10.5px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 20px;
+        }
+        .hub-store-status::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        .hub-store-status.aberta { color: #2E7D32; background: rgba(46, 125, 50, 0.12); }
+        .hub-store-status.fechada { color: #C62828; background: rgba(198, 40, 40, 0.12); }
+
+        .hub-store-meta {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 4px 10px;
+            font-size: 11.5px;
+            color: var(--text-light);
+            font-weight: 600;
+        }
+
+        .hub-store-card-btn {
+            margin-top: 4px;
+            width: 100%;
+            padding: 8px;
+            border-radius: 10px;
+            background: var(--light-bg);
+            color: var(--primary-color);
+            font-size: 12.5px;
+            font-weight: 700;
+        }
+
+        .hub-vazio {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 50px 20px;
+            color: var(--text-light);
+        }
+        .hub-vazio-icon { font-size: 40px; margin-bottom: 8px; }
+
+        .hub-skeleton-card {
+            height: 178px;
+            border-radius: 18px;
+            background: linear-gradient(90deg, var(--border-color) 25%, var(--light-bg) 50%, var(--border-color) 75%);
+            background-size: 200% 100%;
+            animation: hub-skeleton-pulse 1.4s ease-in-out infinite;
+        }
+        @keyframes hub-skeleton-pulse { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    </style>
+</head>
+<body>
+    <!-- Skeleton de tela cheia — cobre a página até os banners e as lojas carregarem
+         (removido/escondido em hub.js, função esconderSkeletonHub()). -->
+    <div class="hub-loading-overlay" id="hubLoadingOverlay">
+        <div class="hub-loading-logo-wrap">
+            <img src="favicon.png?v=1" alt="" onerror="this.style.display='none';">
+        </div>
+        <div class="hub-loading-bar hub-loading-bar-1"></div>
+        <div class="hub-loading-bar hub-loading-bar-2"></div>
+    </div>
+
+    <!-- HEADER FIXO (mesma estrutura do index.html: saudação + logo, depois busca) -->
+    <header class="header">
+        <div class="container header-top">
+            <div class="header-greeting" id="headerGreeting">
+                <div class="hub-plataforma-logo" id="hubPlataformaLogo">
+                    <img src="favicon.png?v=1" alt="" onerror="this.style.display='none'; this.parentElement.textContent='A';">
+                </div>
+                <div class="header-greeting-text-wrap">
+                    <span class="greeting-text">Olá 👋, bem-vindo</span>
+                    <span class="store-open-badge is-aberta" style="display:inline-flex;">Todas as lojas</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="container header-search-row">
+            <div class="search-wrap">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="buscaHub" class="search-input" placeholder="Buscar loja por nome...">
+            </div>
+        </div>
+    </header>
+
+    <!-- Mede a altura real do header, igual ao index.html — evita o carrossel/grid
+         aparecerem por trás do header fixo. -->
+    <script>
+    (function () {
+        function medirHeader() {
+            var header = document.querySelector('.header');
+            if (!header) return;
+            document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
+        }
+        medirHeader();
+        window.addEventListener('resize', medirHeader);
+        window.addEventListener('load', medirHeader);
+    })();
+    </script>
+
+    <!-- CARROSSEL DE BANNERS (controlado pelo super-admin em Banners do hub) -->
+    <section class="hero-carousel-section hero-topo carousel-loading" id="hubBannerSection">
+        <div class="container">
+            <div class="hero-carousel" id="hubBanner">
+                <div class="hero-carousel-track" id="hubBannerTrack"></div>
+                <div class="hero-carousel-dots" id="hubBannerDots"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- GRID DE LOJAS -->
+    <section class="hub-lojas-section">
+        <div class="container">
+            <div class="hub-lojas-header">
+                <span class="section-title">Parceiro Arretado</span>
+                <span class="hub-lojas-contagem" id="hubContagem"></span>
+            </div>
+            <p class="hub-lojas-sub">Escolha uma loja e faça seu pedido direto pelo cardápio digital.</p>
+
+            <div class="hub-grid" id="hubGrid">
+                <div class="hub-skeleton-card"></div>
+                <div class="hub-skeleton-card"></div>
+                <div class="hub-skeleton-card"></div>
+                <div class="hub-skeleton-card"></div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <p>© 2026 ArretadoGo. Desenvolvido com ❤️ para você.</p>
+        </div>
+    </footer>
+
+    <script src="firebase-config.js?v=3"></script>
+    <script src="hub.js?v=2"></script>
+</body>
+</html>

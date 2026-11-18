@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel da Cozinha - ArretadoGo</title>
+    <link rel="icon" type="image/png" href="favicon.png?v=1">
+    <link rel="stylesheet" href="admin-style.css?v=3">
+    <style>
+        /* ===== LOGIN (padrão único usado em todos os painéis — admin, motoboy, super-admin
+           e cozinha — pra dar a mesma primeira impressão em qualquer área restrita do
+           sistema). Antes a cozinha usava as mesmas classes (login-screen, login-box,
+           login-logo, login-error) mas sem nenhum CSS definido pra elas — a tela aparecia
+           sem estilo nenhum, sem imagem de fundo. */
+        .login-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                linear-gradient(180deg, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.85) 60%, #0a0a0a 100%),
+                url('https://rabiscoearte.github.io/MoldesClub/fastfood.png') center center / cover no-repeat;
+            z-index: 9999;
+            animation: fadeInBg 0.6s ease;
+        }
+
+        @keyframes fadeInBg {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .login-box {
+            background: rgba(15, 15, 15, 0.82);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            padding: 44px 40px;
+            border-radius: 10px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.08);
+            animation: fadeInCard 0.5s ease 0.15s both;
+        }
+
+        @keyframes fadeInCard {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .login-box h2 { margin: 0 0 8px; text-align: center; color: #fff; }
+        .login-box p { margin: 0 0 24px; text-align: center; color: #b3b3b3; font-size: 14px; }
+
+        .login-logo {
+            display: block;
+            max-width: 200px;
+            width: 100%;
+            height: auto;
+            margin: 0 auto 20px;
+            filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
+        }
+
+        .login-box .form-group label {
+            color: #d9d9d9;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .login-box .input-field {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #fff;
+        }
+
+        .login-box .input-field::placeholder {
+            color: #8a8a8a;
+        }
+
+        .login-box .input-field:focus {
+            outline: none;
+            border-color: var(--primary-color, #C20000);
+            background: rgba(255,255,255,0.1);
+            box-shadow: 0 0 0 3px rgba(194, 0, 0, 0.2);
+        }
+
+        .login-box #loginSubmitBtn {
+            margin-top: 8px;
+            letter-spacing: 0.3px;
+        }
+        .login-error {
+            background: #fdecea;
+            color: #b91c1c;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        /* ================================================================
+           DASHBOARD DA COZINHA — layout Kanban (Pendentes / Em Preparo / Prontos)
+           com resumo lateral e painel de alertas, seguindo o mockup de referência
+           enviado pelo Dayvid. Tema claro com as cores da marca (vermelho + dourado),
+           em vez do KDS escuro da versão anterior — mais alinhado à identidade visual
+           do ArretadoGo e mais fácil de bater o olho e diferenciar as 3 colunas. */
+        :root {
+            --kc-bg: #F4F1EA;
+            --kc-red: var(--primary-color, #C20000);
+            --kc-red-dark: var(--secondary-color, #2B0000);
+            --kc-gold: #E6A800;
+            --kc-gold-ink: #4a3600;
+            --kc-dark: #1a1a1a;
+            --kc-green: #16A34A;
+            --kc-blue: #2563EB;
+            --kc-border: #ECEDF2;
+            --kc-text: #1a1a1a;
+            --kc-text-dim: #6b7280;
+            --kc-sidebar-bg: #F0E4D0;
+            --kc-shadow: 0 1px 2px rgba(20,20,26,0.05), 0 10px 24px -8px rgba(20,20,26,0.10);
+        }
+
+        body {
+            background: var(--kc-bg);
+            color: var(--kc-text);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #kitchenMain {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* ===== CABEÇALHO ===== */
+        .kc-header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 24px;
+            background: #fff;
+            border-bottom: 3px solid var(--kc-red);
+            box-shadow: var(--kc-shadow);
+        }
+
+        .kc-logo {
+            height: 46px;
+            width: auto;
+            flex-shrink: 0;
+        }
+
+        .kc-header-titles {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.25;
+            min-width: 0;
+        }
+
+        .kc-header-titles h1 {
+            margin: 0;
+            font-size: 19px;
+            font-weight: 800;
+            color: var(--kc-text);
+        }
+
+        .kc-header-titles span {
+            font-size: 13px;
+            color: var(--kc-text-dim);
+        }
+
+        .kc-header-actions {
+            margin-left: auto;
+            display: flex;
+            gap: 8px;
+        }
+
+        .kc-icon-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            border: 1px solid var(--kc-border);
+            background: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .kc-icon-btn:hover { background: #f5f5f5; }
+
+        .kc-icon-btn.kc-icon-btn-active {
+            border-color: var(--kc-gold);
+            color: var(--kc-gold-ink);
+            background: #FFF6DD;
+        }
+
+        .kc-icon-btn.kc-icon-btn-danger {
+            border-color: rgba(194,0,0,0.3);
+            color: var(--kc-red);
+        }
+
+        .kc-icon-btn.kc-icon-btn-danger:hover { background: rgba(194,0,0,0.06); }
+
+        /* ===== CORPO: sidebar + board + alertas ===== */
+        .kc-body {
+            display: flex;
+            align-items: flex-start;
+            gap: 20px;
+            padding: 20px 24px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* ===== SIDEBAR: resumo + ações rápidas ===== */
+        .kc-sidebar {
+            width: 220px;
+            flex-shrink: 0;
+            background: var(--kc-sidebar-bg);
+            border-radius: 16px;
+            padding: 18px;
+        }
+
+        .kc-sidebar h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--kc-text-dim);
+            margin: 0 0 12px;
+        }
+
+        .kc-sidebar h3:not(:first-child) { margin-top: 22px; }
+
+        .kc-stat-card {
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .kc-stat-fila { background: var(--kc-red); }
+        .kc-stat-preparo { background: var(--kc-red-dark); }
+
+        .kc-stat-card strong {
+            display: block;
+            font-size: 26px;
+            line-height: 1.1;
+        }
+
+        .kc-stat-card span {
+            font-size: 12px;
+            opacity: 0.85;
+        }
+
+        .kc-action-btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--kc-red), var(--kc-red-dark));
+            color: #fff;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            transition: filter 0.15s;
+        }
+
+        .kc-action-btn:hover { filter: brightness(1.08); }
+
+        /* ===== BOARD (3 colunas) ===== */
+        .kc-board {
+            flex: 1;
+            display: flex;
+            gap: 16px;
+            overflow-x: auto;
+            min-width: 0;
+            align-items: flex-start;
+        }
+
+        .kc-column {
+            flex: 1 1 300px;
+            min-width: 280px;
+            display: flex;
+            flex-direction: column;
+            background: #fdfcfa;
+            border-radius: 14px;
+            border: 1px solid var(--kc-border);
+            overflow: hidden;
+            max-height: calc(100vh - 150px);
+        }
+
+        .kc-column-header {
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 800;
+            font-size: 14px;
+            letter-spacing: 0.3px;
+            color: #fff;
+        }
+
+        .kc-col-pendente { background: var(--kc-gold); color: var(--kc-gold-ink); }
+        .kc-col-preparo { background: var(--kc-red); }
+        .kc-col-pronto { background: var(--kc-dark); }
+
+        .kc-col-count {
+            background: rgba(255,255,255,0.28);
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+        }
+
+        .kc-col-pendente .kc-col-count { background: rgba(0,0,0,0.12); }
+
+        .kc-column-body {
+            padding: 12px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .kc-col-empty {
+            color: var(--kc-text-dim);
+            text-align: center;
+            padding: 30px 10px;
+            font-size: 13px;
+        }
+
+        /* ===== CARD DE PEDIDO ===== */
+        .kc-card {
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid var(--kc-border);
+            box-shadow: var(--kc-shadow);
+            overflow: hidden;
+        }
+
+        .kc-card-pendente { border-left: 4px solid var(--kc-gold); }
+        .kc-card-preparando { border-left: 4px solid var(--kc-red); }
+        .kc-card-pronto { border-left: 4px solid var(--kc-green); opacity: 0.92; }
+
+        .kc-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--kc-border);
+        }
+
+        .kc-order-number { font-weight: 800; font-size: 16px; }
+
+        .kc-order-timer {
+            font-size: 12px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 999px;
+            background: #F3F3F3;
+            color: var(--kc-text-dim);
+        }
+
+        .kc-order-timer.timer-warning {
+            background: var(--kc-red);
+            color: #fff;
+            animation: kcPulse 1.5s infinite;
+        }
+
+        @keyframes kcPulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        .kc-card-body { padding: 12px; }
+
+        .kc-type-badge {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .kc-type-delivery { background: #EAF1FE; color: var(--kc-blue); }
+        .kc-type-retirada { background: #E7F8ED; color: var(--kc-green); }
+
+        .kc-customer {
+            font-size: 13px;
+            color: var(--kc-text-dim);
+            margin-bottom: 8px;
+        }
+
+        .kc-items { list-style: none; margin: 0; padding: 0; }
+
+        .kc-item-row {
+            padding: 8px 0;
+            border-bottom: 1px dashed var(--kc-border);
+        }
+
+        .kc-item-row:last-child { border-bottom: none; }
+
+        .kc-item-main {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .kc-item-qtd {
+            background: var(--kc-red);
+            color: #fff;
+            padding: 1px 7px;
+            border-radius: 6px;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+
+        .kc-item-details {
+            padding-left: 28px;
+            font-size: 12px;
+            color: var(--kc-text-dim);
+            margin-top: 4px;
+            line-height: 1.5;
+        }
+
+        .kc-item-obs {
+            background: #FDEAEA;
+            color: #C0392B;
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 6px;
+        }
+
+        .kc-card-footer {
+            padding: 10px 12px;
+            border-top: 1px solid var(--kc-border);
+        }
+
+        .kc-btn {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            transition: filter 0.15s;
+        }
+
+        .kc-btn:hover { filter: brightness(1.06); }
+        .kc-btn-start { background: var(--kc-gold); color: var(--kc-gold-ink); }
+        .kc-btn-ready { background: var(--kc-green); color: #fff; }
+
+        .kc-pronto-tag {
+            display: block;
+            text-align: center;
+            font-size: 12px;
+            color: var(--kc-green);
+            font-weight: 700;
+        }
+
+        /* ===== MINI-STATS DE PEDIDOS CONCLUÍDOS (Hoje / Semana / Mês) =====
+           "Concluído" aqui = pedido com status 'entregue' (saiu de vez, contando pela
+           mesma lógica de data usada no relatório do admin: entregueEm, com fallback
+           pra criadoEm se por algum motivo faltar). "Semana" = últimos 7 dias corridos
+           (mesmo critério do relatório em admin.js), não semana de calendário. */
+        .kc-mini-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .kc-mini-stat {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fff;
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 12px;
+            color: var(--kc-text-dim);
+        }
+
+        .kc-mini-stat strong {
+            font-size: 15px;
+            color: var(--kc-text);
+            font-weight: 800;
+        }
+
+        /* ===== ALERTAS — popup flutuante no rodapé, só aparece quando existe pedido
+           de verdade em atraso. Antes era uma coluna fixa sempre visível (mesmo
+           dizendo "tudo dentro do prazo"), ocupando espaço à toa. */
+        .kc-toast-container {
+            position: fixed;
+            left: 50%;
+            bottom: 16px;
+            transform: translateX(-50%);
+            width: calc(100% - 32px);
+            max-width: 420px;
+            z-index: 500;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        .kc-alert-item {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+            background: #FFF6DD;
+            border: 1px solid #F5DFA0;
+            border-radius: 10px;
+            padding: 12px;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.18);
+            pointer-events: auto;
+            animation: kcToastIn 0.25s ease both;
+        }
+
+        @keyframes kcToastIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .kc-alert-icon { font-size: 16px; }
+
+        .kc-alert-text {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            font-size: 12px;
+            min-width: 0;
+        }
+
+        .kc-alert-text strong { font-size: 13px; }
+
+        .kc-alert-dismiss {
+            background: none;
+            border: none;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            color: var(--kc-text-dim);
+            flex-shrink: 0;
+        }
+
+        /* ===== MODO ZOOM (texto maior, pra ver de mais longe) ===== */
+        .zoom-large .kc-order-number { font-size: 19px; }
+        .zoom-large .kc-item-main { font-size: 17px; }
+        .zoom-large .kc-item-qtd { font-size: 14px; }
+        .zoom-large .kc-item-details { font-size: 14px; }
+        .zoom-large .kc-btn { font-size: 15px; padding: 13px; }
+
+        /* ===== RESPONSIVO (mobile primeiro, ver print enviado) ===== */
+        @media (max-width: 900px) {
+            .kc-body { flex-direction: column; padding: 14px; gap: 14px; }
+            .kc-sidebar {
+                width: 100%;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 10px;
+            }
+            .kc-sidebar h3 { width: 100%; margin: 0 0 2px; }
+            .kc-sidebar h3:not(:first-child) { margin-top: 6px; }
+            .kc-stat-card { flex: 1; min-width: 130px; margin-bottom: 0; }
+            .kc-mini-stats { flex: 1; min-width: 160px; }
+            .kc-action-btn { flex: 1; min-width: 160px; }
+            .kc-board { order: 2; width: 100%; }
+        }
+
+        @media (max-width: 480px) {
+            .kc-header { padding: 10px 14px; }
+            .kc-logo { height: 38px; }
+            .kc-header-titles h1 { font-size: 16px; }
+            .kc-column { min-width: 260px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- TELA DE LOGIN COZINHA — mesma estrutura visual do login do admin.html -->
+    <div class="login-screen" id="kitchenLoginScreen">
+        <div class="login-box">
+            <img src="logo.png?v=1" alt="ArretadoGo" class="login-logo">
+            <p>🍳 Tela da Cozinha — só pedidos, sem acesso ao resto do painel</p>
+            <form id="kitchenLoginForm">
+                <div class="form-group">
+                    <label for="kEmail">E-mail</label>
+                    <input type="email" id="kEmail" class="input-field" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="kPassword">Senha</label>
+                    <input type="password" id="kPassword" class="input-field" required autocomplete="current-password">
+                </div>
+                <div id="kLoginError" class="login-error" style="display:none;"></div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">Acessar Produção</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- DASHBOARD DA COZINHA — layout Kanban seguindo o mockup de referência -->
+    <div id="kitchenMain" style="display: none;">
+        <header class="kc-header">
+            <img src="logo.png?v=1" alt="ArretadoGo" class="kc-logo">
+            <div class="kc-header-titles">
+                <h1>Dashboard de Cozinha</h1>
+                <span id="kUserInfo">Conectado</span>
+            </div>
+            <div class="kc-header-actions">
+                <button type="button" id="toggleZoomBtn" class="kc-icon-btn" title="Aumentar texto" aria-label="Aumentar texto">🔍</button>
+                <button type="button" id="kLogoutBtn" class="kc-icon-btn kc-icon-btn-danger" title="Sair" aria-label="Sair">🚪</button>
+            </div>
+        </header>
+
+        <div class="kc-body">
+            <!-- RESUMO + AÇÕES RÁPIDAS -->
+            <aside class="kc-sidebar">
+                <h3>Resumo de Pedidos</h3>
+                <div class="kc-stat-card kc-stat-fila">
+                    <strong id="statFila">0</strong>
+                    <span>Pedidos em Fila</span>
+                </div>
+                <div class="kc-stat-card kc-stat-preparo">
+                    <strong id="statPreparo">0</strong>
+                    <span>Em Preparo</span>
+                </div>
+
+                <h3>Concluídos</h3>
+                <div class="kc-mini-stats">
+                    <div class="kc-mini-stat"><span>Hoje</span><strong id="statConcluidosHoje">0</strong></div>
+                    <div class="kc-mini-stat"><span>Últimos 7 dias</span><strong id="statConcluidosSemana">0</strong></div>
+                    <div class="kc-mini-stat"><span>Este mês</span><strong id="statConcluidosMes">0</strong></div>
+                </div>
+
+                <h3>Ações Rápidas</h3>
+                <button type="button" class="kc-action-btn" id="printPendentesBtn">🖨️ Imprimir Pendentes</button>
+            </aside>
+
+            <!-- BOARD KANBAN -->
+            <section class="kc-board">
+                <div class="kc-column">
+                    <div class="kc-column-header kc-col-pendente">
+                        <span>Pendentes</span>
+                        <span class="kc-col-count" id="countPendentes">0</span>
+                    </div>
+                    <div class="kc-column-body" id="colPendentes">
+                        <p class="kc-col-empty">Carregando pedidos...</p>
+                    </div>
+                </div>
+
+                <div class="kc-column">
+                    <div class="kc-column-header kc-col-preparo">
+                        <span>Em Preparo</span>
+                        <span class="kc-col-count" id="countPreparando">0</span>
+                    </div>
+                    <div class="kc-column-body" id="colPreparando">
+                        <p class="kc-col-empty">Carregando pedidos...</p>
+                    </div>
+                </div>
+
+                <div class="kc-column">
+                    <div class="kc-column-header kc-col-pronto">
+                        <span>Prontos</span>
+                        <span class="kc-col-count" id="countProntos">0</span>
+                    </div>
+                    <div class="kc-column-body" id="colProntos">
+                        <p class="kc-col-empty">Carregando pedidos...</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ALERTAS — popup flutuante, só ganha conteúdo (e só então aparece) quando
+             existe pedido de verdade em atraso. Ver renderizarAlertas() no script abaixo. -->
+        <div class="kc-toast-container" id="alertsToastContainer" aria-live="polite"></div>
+    </div>
+
+
+    <!-- LIBS DE INFRAESTRUTURA -->
+    <script src="firebase-config.js?v=2"></script>
+    <script src="pedido-status-utils.js?v=2"></script>
+
+    <script>
+        // pedidosCozinha = pedidos ativos (pendente + preparando), vindos direto do Firestore.
+        // prontosRecentes = pedidos que acabaram de ficar prontos NESTA sessão do painel —
+        // não existe um campo "ficouProntoEm" no pedido, então controlamos isso aqui mesmo,
+        // no navegador: quando um pedido aparece como 'pronto' pela primeira vez, guardamos
+        // o horário local. A coluna "Prontos" existe só pra dar uma confirmação visual rápida
+        // pra quem está na cozinha — depois de LIMITE_PRONTOS_MIN ele some da lista sozinho.
+        let pedidosCozinha = [];
+        let todosPedidos = []; // lista completa (todos os status) só pra contar os concluídos
+        let prontosRecentes = new Map(); // id -> { pedido, vistoEm }
+        let alertasDispensados = new Set(); // ids de pedidos com alerta de atraso dispensado nesta sessão
+        let zoomAtivo = false;
+        let unsubscribePedidosCozinha = null;
+        let intervaloAtualizacao = null;
+
+        const LIMITE_ALERTA_MIN = 20; // minutos parado no mesmo status pra disparar alerta de atraso
+        const LIMITE_PRONTOS_MIN = 20; // quanto tempo um pedido fica visível na coluna "Prontos"
+
+        document.addEventListener('DOMContentLoaded', () => {
+            inicializarLoginCozinha();
+            verificarAutenticacaoCozinha();
+
+            document.getElementById('toggleZoomBtn').addEventListener('click', (e) => {
+                zoomAtivo = !zoomAtivo;
+                document.body.classList.toggle('zoom-large', zoomAtivo);
+                e.currentTarget.classList.toggle('kc-icon-btn-active', zoomAtivo);
+            });
+
+            document.getElementById('printPendentesBtn').addEventListener('click', imprimirPendentes);
+
+            // Os cronômetros dos cards e os alertas de atraso dependem só da hora atual —
+            // sem isso eles ficariam "parados" entre um pedido novo e outro, já que só
+            // re-renderizamos quando o Firestore manda alguma mudança.
+            intervaloAtualizacao = setInterval(() => {
+                if (document.getElementById('kitchenMain').style.display !== 'none') {
+                    renderizarCozinha();
+                }
+            }, 30000);
+        });
+
+        function inicializarLoginCozinha() {
+            document.getElementById('kitchenLoginForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('kEmail').value.trim();
+                const senha = document.getElementById('kPassword').value;
+                const errBox = document.getElementById('kLoginError');
+                errBox.style.display = 'none';
+
+                try {
+                    await loginComEmailSenha(email, senha);
+                    // onAuthStateChanged (verificarAutenticacaoCozinha) cuida do resto,
+                    // inclusive de checar se esse login tem permissão de cozinha.
+                } catch (err) {
+                    errBox.textContent = 'E-mail ou senha inválidos.';
+                    errBox.style.display = 'block';
+                }
+            });
+
+            document.getElementById('kLogoutBtn').addEventListener('click', async () => {
+                await logoutAdmin(); // mesmo signOut() usado em todo o resto do site
+            });
+        }
+
+        async function verificarAutenticacaoCozinha() {
+            const { auth } = await getFirebase();
+            auth.onAuthStateChanged(async (user) => {
+                if (!user) {
+                    pararEscutaPedidosCozinha();
+                    document.getElementById('kitchenLoginScreen').style.display = 'flex';
+                    document.getElementById('kitchenMain').style.display = 'none';
+                    return;
+                }
+
+                // Cozinha vive dentro de UMA loja, mas isso não dá pra saber sem antes
+                // achar o índice global uid -> lojaId (cozinha fica em subcoleção da
+                // loja, não dá pra consultar sem já saber qual é a loja).
+                const lojaId = await getCozinhaLojaId(user.uid);
+                if (!lojaId) {
+                    pararEscutaPedidosCozinha();
+                    await auth.signOut();
+                    mostrarErroLoginCozinha('Este acesso não está autorizado como cozinha, ou foi desativado.');
+                    return;
+                }
+                definirLojaAtual(lojaId);
+
+                const funcionario = await getCozinhaByUid(user.uid);
+                if (!funcionario || funcionario.ativo === false) {
+                    // Não é cadastro de cozinha, ou foi desativado: desloga e barra o acesso
+                    pararEscutaPedidosCozinha();
+                    await auth.signOut();
+                    mostrarErroLoginCozinha('Este acesso não está autorizado como cozinha, ou foi desativado.');
+                    return;
+                }
+
+                document.getElementById('kitchenLoginScreen').style.display = 'none';
+                document.getElementById('kitchenMain').style.display = '';
+                document.getElementById('kUserInfo').textContent = funcionario.nome || user.email;
+
+                escutarPedidosCozinha();
+            });
+        }
+
+        function mostrarErroLoginCozinha(mensagem) {
+            document.getElementById('kitchenLoginScreen').style.display = 'flex';
+            document.getElementById('kitchenMain').style.display = 'none';
+            const errBox = document.getElementById('kLoginError');
+            errBox.textContent = mensagem;
+            errBox.style.display = 'block';
+        }
+
+        function escutarPedidosCozinha() {
+            if (unsubscribePedidosCozinha) return; // já está escutando
+            observarTodosPedidos((pedidos) => {
+                todosPedidos = pedidos; // guardado à parte só pra contar os concluídos (entregues)
+                pedidosCozinha = pedidos.filter(p => p.status === 'pendente' || p.status === 'preparando');
+
+                // Atualiza a lista de "prontos recentes": adiciona quem acabou de virar
+                // pronto, atualiza dados de quem já estava, e remove quem saiu da lista
+                // de pedidos prontos (ex: motoboy retirou/fechou) ou passou do prazo.
+                const idsProntosAtuais = new Set();
+                pedidos.filter(p => p.status === 'pronto').forEach(p => {
+                    idsProntosAtuais.add(p.id);
+                    if (prontosRecentes.has(p.id)) {
+                        prontosRecentes.get(p.id).pedido = p;
+                    } else {
+                        prontosRecentes.set(p.id, { pedido: p, vistoEm: new Date() });
+                    }
+                });
+                const agora = new Date();
+                for (const [id, entry] of prontosRecentes) {
+                    const minutos = (agora - entry.vistoEm) / 60000;
+                    if (minutos > LIMITE_PRONTOS_MIN || !idsProntosAtuais.has(id)) {
+                        prontosRecentes.delete(id);
+                    }
+                }
+
+                // Limpa alertas dispensados de pedidos que não estão mais ativos (evita
+                // esse conjunto crescer pra sempre ao longo de um turno de trabalho).
+                const idsAtivos = new Set(pedidosCozinha.map(p => p.id));
+                for (const id of alertasDispensados) {
+                    if (!idsAtivos.has(id)) alertasDispensados.delete(id);
+                }
+
+                renderizarCozinha();
+            }).then(unsub => { unsubscribePedidosCozinha = unsub; });
+        }
+
+        function pararEscutaPedidosCozinha() {
+            if (unsubscribePedidosCozinha) {
+                unsubscribePedidosCozinha();
+                unsubscribePedidosCozinha = null;
+            }
+            todosPedidos = [];
+            prontosRecentes.clear();
+            alertasDispensados.clear();
+        }
+
+        function dataDoPedido(pedido) {
+            return pedido.criadoEm?.toDate ? pedido.criadoEm.toDate() : new Date(pedido.criadoEm);
+        }
+
+        function minutosDesde(data) {
+            return Math.max(0, Math.floor((new Date() - data) / 60000));
+        }
+
+        function ordenarPorCriacaoAsc(a, b) {
+            return dataDoPedido(a) - dataDoPedido(b);
+        }
+
+        // Mesma lógica de "data da venda" usada no relatório do admin (entregueEm, com
+        // fallback pra criadoEm se por algum motivo faltar) — assim a contagem aqui bate
+        // com a do relatório, em vez de inventar um critério novo só pra cozinha.
+        function dataDeConclusao(pedido) {
+            const paraData = (timestamp) => {
+                if (!timestamp) return null;
+                return typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
+            };
+            return paraData(pedido.entregueEm) || paraData(pedido.criadoEm);
+        }
+
+        function atualizarConcluidosPorPeriodo() {
+            const agora = new Date();
+            const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+            const inicio7dias = new Date(inicioHoje);
+            inicio7dias.setDate(inicio7dias.getDate() - 6);
+            const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+
+            const entregues = todosPedidos.filter(p => p.status === 'entregue');
+            const contar = (desde) => entregues.filter(p => {
+                const d = dataDeConclusao(p);
+                return d && d >= desde;
+            }).length;
+
+            document.getElementById('statConcluidosHoje').textContent = contar(inicioHoje);
+            document.getElementById('statConcluidosSemana').textContent = contar(inicio7dias);
+            document.getElementById('statConcluidosMes').textContent = contar(inicioMes);
+        }
+
+        function renderizarCozinha() {
+            const pendentes = pedidosCozinha.filter(p => p.status === 'pendente').sort(ordenarPorCriacaoAsc);
+            const preparando = pedidosCozinha.filter(p => p.status === 'preparando').sort(ordenarPorCriacaoAsc);
+            const prontos = Array.from(prontosRecentes.values())
+                .sort((a, b) => b.vistoEm - a.vistoEm)
+                .map(entry => entry.pedido);
+
+            document.getElementById('statFila').textContent = pendentes.length;
+            document.getElementById('statPreparo').textContent = preparando.length;
+            document.getElementById('countPendentes').textContent = pendentes.length;
+            document.getElementById('countPreparando').textContent = preparando.length;
+            document.getElementById('countProntos').textContent = prontos.length;
+
+            renderizarColuna('colPendentes', pendentes, 'pendente', 'Nenhum pedido pendente.');
+            renderizarColuna('colPreparando', preparando, 'preparando', 'Nada em preparo agora.');
+            renderizarColuna('colProntos', prontos, 'pronto', 'Nenhum pedido pronto ainda.');
+
+            atualizarConcluidosPorPeriodo();
+            renderizarAlertas(pendentes.concat(preparando));
+        }
+
+        function renderizarColuna(containerId, lista, status, mensagemVazia) {
+            const container = document.getElementById(containerId);
+            if (lista.length === 0) {
+                container.innerHTML = `<p class="kc-col-empty">${mensagemVazia}</p>`;
+                return;
+            }
+            container.innerHTML = lista.map(pedido => montarCardHtml(pedido, status)).join('');
+        }
+
+        function montarItensHtml(pedido) {
+            if (!Array.isArray(pedido.itens)) return '';
+            return pedido.itens.map(item => {
+                let detalhes = '';
+                if (item.sabores && item.sabores.length > 0) {
+                    detalhes += `<div>🍕 <strong>Sabores:</strong> ${item.sabores.join(', ')}</div>`;
+                }
+                if (item.adicionais && item.adicionais.length > 0) {
+                    detalhes += `<div>➕ <strong>Adicionais:</strong> ${item.adicionais.map(a => a.nome || a).join(', ')}</div>`;
+                }
+                const obsHtml = item.observacao ? `<div class="kc-item-obs">⚠️ OBS: ${escaparHtml(item.observacao)}</div>` : '';
+                return `
+                    <li class="kc-item-row">
+                        <div class="kc-item-main">
+                            <span class="kc-item-qtd">${item.quantidade}x</span>
+                            <span>${escaparHtml(item.nome)}</span>
+                        </div>
+                        ${(detalhes || obsHtml) ? `<div class="kc-item-details">${detalhes}${obsHtml}</div>` : ''}
+                    </li>
+                `;
+            }).join('');
+        }
+
+        function montarCardHtml(pedido, status) {
+            const minutosDecorridos = minutosDesde(dataDoPedido(pedido));
+            const alerta = (status !== 'pronto' && minutosDecorridos > LIMITE_ALERTA_MIN) ? 'timer-warning' : '';
+
+            let footerHtml = '';
+            if (status === 'pendente') {
+                footerHtml = `<button class="kc-btn kc-btn-start" onclick="alterarStatusCozinha('${pedido.id}', 'preparando')">👨‍🍳 Iniciar Preparo</button>`;
+            } else if (status === 'preparando') {
+                footerHtml = `<button class="kc-btn kc-btn-ready" onclick="alterarStatusCozinha('${pedido.id}', 'pronto')">✅ Concluir Preparo</button>`;
+            } else {
+                const entry = prontosRecentes.get(pedido.id);
+                const minutosPronto = entry ? minutosDesde(entry.vistoEm) : 0;
+                footerHtml = `<span class="kc-pronto-tag">Pronto há ${minutosPronto} min</span>`;
+            }
+
+            return `
+                <div class="kc-card kc-card-${status}">
+                    <div class="kc-card-header">
+                        <span class="kc-order-number">#${pedido.codigoPedido || pedido.id.substring(0, 8).toUpperCase()}</span>
+                        <span class="kc-order-timer ${alerta}">⏱️ ${minutosDecorridos} min</span>
+                    </div>
+                    <div class="kc-card-body">
+                        <span class="kc-type-badge ${pedido.tipoEntrega === 'delivery' ? 'kc-type-delivery' : 'kc-type-retirada'}">
+                            ${pedido.tipoEntrega === 'delivery' ? '🚗 Entrega' : '🏪 Retirada'}
+                        </span>
+                        ${pedido.nome ? `<div class="kc-customer">👤 ${escaparHtml(pedido.nome)}</div>` : ''}
+                        <ul class="kc-items">${montarItensHtml(pedido)}</ul>
+                        ${pedido.observacaoGeral ? `<div class="kc-item-obs">📝 OBS GERAL: ${escaparHtml(pedido.observacaoGeral)}</div>` : ''}
+                    </div>
+                    <div class="kc-card-footer">${footerHtml}</div>
+                </div>
+            `;
+        }
+
+        function renderizarAlertas(pedidosAtivos) {
+            const container = document.getElementById('alertsToastContainer');
+            const emAtraso = pedidosAtivos.filter(p => {
+                if (alertasDispensados.has(p.id)) return false;
+                return minutosDesde(dataDoPedido(p)) > LIMITE_ALERTA_MIN;
+            });
+
+            // Sem atraso de verdade: o container fica vazio (sem altura, sem sombra,
+            // sem nada na tela) — nada de popup ou aviso "tudo certo" ocupando espaço.
+            if (emAtraso.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            container.innerHTML = emAtraso.map(p => {
+                const minutos = minutosDesde(dataDoPedido(p));
+                return `
+                    <div class="kc-alert-item">
+                        <span class="kc-alert-icon">⚠️</span>
+                        <div class="kc-alert-text">
+                            <strong>Pedido #${p.codigoPedido || p.id.substring(0, 8).toUpperCase()}</strong>
+                            <span>Possível atraso — ${minutos} min parado</span>
+                        </div>
+                        <button class="kc-alert-dismiss" onclick="dispensarAlerta('${p.id}')" aria-label="Dispensar alerta">×</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function dispensarAlerta(id) {
+            alertasDispensados.add(id);
+            renderizarCozinha();
+        }
+
+        async function alterarStatusCozinha(pedidoId, novoStatus) {
+            try {
+                await updatePedidoStatus(pedidoId, novoStatus);
+            } catch (err) {
+                alert('Erro ao atualizar status do pedido.');
+            }
+        }
+
+        // Imprime uma "comanda" simples por pedido pendente, num formato estreito
+        // (compatível com impressoras térmicas de cozinha). Abre uma janela separada
+        // só com o conteúdo pra imprimir e já dispara o print() do navegador.
+        function imprimirPendentes() {
+            const pendentes = pedidosCozinha.filter(p => p.status === 'pendente').sort(ordenarPorCriacaoAsc);
+            if (pendentes.length === 0) {
+                alert('Não há pedidos pendentes para imprimir.');
+                return;
+            }
+
+            const janela = window.open('', '_blank', 'width=380,height=600');
+            if (!janela) {
+                alert('Não foi possível abrir a janela de impressão. Verifique se o navegador está bloqueando pop-ups.');
+                return;
+            }
+
+            const comandas = pendentes.map(p => {
+                const itens = Array.isArray(p.itens)
+                    ? p.itens.map(i => `${i.quantidade}x ${escaparHtml(i.nome)}`).join('<br>')
+                    : '';
+                return `
+                    <div style="page-break-after: always; padding: 14px; font-family: 'Courier New', monospace;">
+                        <h2 style="margin:0 0 6px; font-size:18px;">#${p.codigoPedido || p.id.substring(0, 8).toUpperCase()}</h2>
+                        <p style="margin:0 0 6px;">${p.tipoEntrega === 'delivery' ? '🚗 Entrega' : '🏪 Retirada'}</p>
+                        ${p.nome ? `<p style="margin:0 0 8px;">Cliente: ${escaparHtml(p.nome)}</p>` : ''}
+                        <hr>
+                        <p style="margin:8px 0;">${itens}</p>
+                        ${p.observacaoGeral ? `<p style="margin:8px 0; font-weight:bold;">OBS: ${escaparHtml(p.observacaoGeral)}</p>` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            janela.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedidos Pendentes</title></head><body>${comandas}</body></html>`);
+            janela.document.close();
+            janela.focus();
+            janela.print();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel da Plataforma - ArretadoGo</title>
+    <link rel="stylesheet" href="admin-style.css?v=3">
+    <style>
+        /* ===== LOGIN (padrão único usado em todos os painéis — admin, motoboy e super-admin —
+           pra dar a mesma primeira impressão em qualquer área restrita do sistema) ===== */
+        .login-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                linear-gradient(180deg, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.85) 60%, #0a0a0a 100%),
+                url('https://rabiscoearte.github.io/MoldesClub/fastfood.png') center center / cover no-repeat;
+            z-index: 9999;
+            animation: fadeInBg 0.6s ease;
+        }
+
+        @keyframes fadeInBg {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .login-box {
+            background: rgba(15, 15, 15, 0.82);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            padding: 44px 40px;
+            border-radius: 10px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.08);
+            animation: fadeInCard 0.5s ease 0.15s both;
+        }
+
+        @keyframes fadeInCard {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .login-box h2 { margin: 0 0 8px; text-align: center; color: #fff; }
+        .login-box p { margin: 0 0 24px; text-align: center; color: #b3b3b3; font-size: 14px; }
+
+        .login-logo {
+            display: block;
+            max-width: 200px;
+            width: 100%;
+            height: auto;
+            margin: 0 auto 20px;
+            filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
+        }
+
+        .login-box .form-group { margin-bottom: 14px; }
+        .login-box .form-group label { color: #d9d9d9; font-size: 13px; font-weight: 600; }
+        .login-box .input-field {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #fff;
+        }
+        .login-box .input-field::placeholder { color: #8a8a8a; }
+        .login-box .input-field:focus {
+            outline: none;
+            border-color: var(--primary-color, #C20000);
+            background: rgba(255,255,255,0.1);
+            box-shadow: 0 0 0 3px rgba(194, 0, 0, 0.2);
+        }
+        .login-box #loginSubmitBtn {
+            margin-top: 8px;
+            letter-spacing: 0.3px;
+        }
+        .login-error {
+            background: #fdecea;
+            color: #b91c1c;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        /* ================= DESIGN TOKENS ================= */
+        :root {
+            --sa-bg: #F2F3F7;
+            --sa-ink: #16161D;
+            --sa-ink-soft: #6B7280;
+            --sa-line: #ECEDF2;
+            --sa-radius: 16px;
+            --sa-shadow: 0 1px 2px rgba(20,20,26,0.04), 0 10px 24px -8px rgba(20,20,26,0.08);
+            --sa-sidebar-w: 248px;
+            --sa-topbar-h: 66px;
+            --sa-green: #16A34A;   --sa-green-bg: #E7F8ED;
+            --sa-red:   #C20000;   --sa-red-bg:   #FDEAEA;
+            --sa-gold:  #E6A800;   --sa-gold-bg:  #FFF6DD;
+            --sa-blue:  #2563EB;   --sa-blue-bg:  #EAF1FE;
+        }
+
+        * { box-sizing: border-box; }
+        body { background: var(--sa-bg); color: var(--sa-ink); }
+
+        /* ================= SIDEBAR ================= */
+        .sa-sidebar {
+            position: fixed; top: 0; left: 0; bottom: 0; width: var(--sa-sidebar-w);
+            background: #fff; border-right: 1px solid var(--sa-line); z-index: 200;
+            display: flex; flex-direction: column; transition: transform 0.25s ease;
+        }
+        .sa-sidebar-brand {
+            padding: 20px; background: linear-gradient(150deg, #1a1a1a 0%, #0a0a0a 100%);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .sa-sidebar-brand-logo {
+            width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center;
+            justify-content: center; font-size: 18px; background: linear-gradient(135deg, var(--accent-color, #FFC107), #FF9800);
+        }
+        .sa-sidebar-brand strong { color: #fff; font-size: 15px; display: block; line-height: 1.2; }
+        .sa-sidebar-brand span { color: #a3a3ab; font-size: 11px; }
+
+        .sa-sidebar-user {
+            display: flex; align-items: center; gap: 10px; padding: 16px 20px;
+            border-bottom: 1px solid var(--sa-line);
+        }
+        .sa-sidebar-user-avatar {
+            width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, var(--primary-color, #C20000), #FF7A00);
+            color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px;
+        }
+        .sa-sidebar-user-name { font-size: 13.5px; font-weight: 700; line-height: 1.3; }
+        .sa-sidebar-user-role {
+            font-size: 10.5px; font-weight: 700; color: var(--sa-gold); background: var(--sa-gold-bg);
+            padding: 1px 8px; border-radius: 8px; display: inline-block; margin-top: 2px;
+        }
+
+        .sa-nav { padding: 14px 12px; flex: 1; overflow-y: auto; }
+        .sa-nav-item {
+            display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 10px;
+            color: #4b4b55; font-size: 13.5px; font-weight: 600; text-decoration: none; margin-bottom: 2px;
+            cursor: pointer; border: none; background: none; width: 100%; text-align: left;
+        }
+        .sa-nav-item .icone { font-size: 16px; width: 20px; text-align: center; }
+        .sa-nav-item:hover { background: #F5F5F8; }
+        .sa-nav-item.ativo { background: linear-gradient(135deg, var(--primary-color, #C20000), #970000); color: #fff; }
+        .sa-nav-label {
+            font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+            color: #b5b5bd; margin: 16px 12px 8px;
+        }
+        .sa-nav-label:first-child { margin-top: 2px; }
+
+        .sa-sidebar-footer { padding: 14px; border-top: 1px solid var(--sa-line); }
+        .sa-sidebar-footer button {
+            width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
+            background: var(--sa-red-bg); color: var(--sa-red); border: none; font-weight: 700; font-size: 13.5px; cursor: pointer;
+        }
+
+        .sa-sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(10,10,14,0.5); z-index: 190; }
+
+        /* ================= ÁREA PRINCIPAL ================= */
+        .sa-main { margin-left: var(--sa-sidebar-w); min-height: 100vh; }
+
+        .sa-topbar {
+            height: var(--sa-topbar-h); background: #fff; border-bottom: 1px solid var(--sa-line);
+            display: flex; align-items: center; gap: 14px; padding: 0 22px; position: sticky; top: 0; z-index: 100;
+        }
+        .sa-hamburger {
+            display: none; background: none; border: none; font-size: 20px; cursor: pointer; color: var(--sa-ink);
+        }
+        .sa-topbar-search {
+            flex: 1; max-width: 340px; position: relative;
+        }
+        .sa-topbar-search input {
+            width: 100%; border: 1px solid var(--sa-line); background: var(--sa-bg); border-radius: 10px;
+            padding: 9px 14px 9px 34px; font-size: 13.5px;
+        }
+        .sa-topbar-search::before {
+            content: '🔎'; position: absolute; left: 11px; top: 50%; transform: translateY(-50%); font-size: 13px;
+        }
+        .sa-topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+        .sa-topbar-icon {
+            width: 38px; height: 38px; border-radius: 10px; background: var(--sa-bg); border: none;
+            display: flex; align-items: center; justify-content: center; font-size: 16px; cursor: pointer; position: relative;
+        }
+        .sa-topbar-icon .badge {
+            position: absolute; top: -3px; right: -3px; background: var(--sa-red); color: #fff; font-size: 9.5px;
+            font-weight: 800; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        }
+        .sa-topbar-profile { display: flex; align-items: center; gap: 8px; }
+        .sa-topbar-profile-avatar {
+            width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--primary-color, #C20000), #FF7A00);
+            color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px;
+        }
+        .sa-topbar-profile span { font-size: 12.5px; font-weight: 700; }
+
+        .sa-content { padding: 24px 22px 90px; max-width: 1160px; }
+
+        /* ---- Cabeçalho de boas-vindas ---- */
+        .sa-welcome { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+        .sa-welcome h1 { font-size: 21px; font-weight: 800; margin: 0 0 4px; }
+        .sa-welcome p { font-size: 13.5px; color: var(--sa-ink-soft); margin: 0; }
+        .sa-welcome-acoes { display: flex; gap: 10px; }
+        .sa-welcome-acoes .btn { border-radius: 10px; padding: 10px 18px; font-size: 13.5px; }
+
+        /* ---- Grid de KPIs ---- */
+        .sa-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+        .sa-kpi {
+            border-radius: var(--sa-radius); padding: 20px; color: #fff; position: relative; overflow: hidden;
+            box-shadow: var(--sa-shadow);
+        }
+        .sa-kpi.gold  { background: linear-gradient(135deg, #FFC940, #E6A800); }
+        .sa-kpi.green { background: linear-gradient(135deg, #22C55E, #15803D); }
+        .sa-kpi.dark  { background: linear-gradient(135deg, #3a2020, #1a1a1a); }
+        .sa-kpi.red   { background: linear-gradient(135deg, #E00000, #8C0000); }
+        .sa-kpi-icon {
+            position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; border-radius: 50%;
+            background: rgba(255,255,255,0.22); display: flex; align-items: center; justify-content: center; font-size: 15px;
+        }
+        .sa-kpi-rotulo { font-size: 12.5px; opacity: 0.92; font-weight: 600; }
+        .sa-kpi-valor { font-size: 26px; font-weight: 800; margin: 6px 0 4px; }
+        .sa-kpi-sub { font-size: 11.5px; opacity: 0.85; }
+
+        /* ---- Área do gráfico + mini stats ---- */
+        .sa-grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; margin-bottom: 20px; }
+        .sa-card {
+            background: #fff; border-radius: var(--sa-radius); padding: 20px;
+            box-shadow: var(--sa-shadow); margin-bottom: 16px;
+        }
+        .sa-card h2 { margin: 0 0 4px; font-size: 15.5px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .sa-card .sa-card-sub { font-size: 12px; color: var(--sa-ink-soft); margin: 0 0 16px; }
+
+        .sa-mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+        .sa-mini {
+            border: 1px solid var(--sa-line); border-radius: 12px; padding: 12px 14px;
+        }
+        .sa-mini-rotulo { font-size: 11px; color: var(--sa-ink-soft); font-weight: 600; }
+        .sa-mini-valor { font-size: 17px; font-weight: 800; margin-top: 3px; }
+
+        .sa-chart-wrap { width: 100%; overflow: hidden; }
+        .sa-chart-wrap svg { width: 100%; height: auto; display: block; }
+
+        /* ---- Avisos ---- */
+        .sa-avisos-lista { display: flex; flex-direction: column; gap: 10px; }
+        .sa-aviso {
+            display: flex; gap: 10px; align-items: flex-start; padding: 11px 12px; border-radius: 10px;
+            background: var(--sa-bg); font-size: 12.5px; line-height: 1.4;
+        }
+        .sa-aviso.critico { background: var(--sa-red-bg); }
+        .sa-aviso.atencao { background: var(--sa-gold-bg); }
+        .sa-aviso b { display: block; font-size: 13px; }
+        .sa-aviso-icone { font-size: 15px; }
+
+        /* ---- Tabela de recentes ---- */
+        .sa-tabela { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .sa-tabela th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+            color: var(--sa-ink-soft); font-weight: 700; padding: 0 10px 10px; border-bottom: 1px solid var(--sa-line); }
+        .sa-tabela td { padding: 11px 10px; border-bottom: 1px solid var(--sa-line); }
+        .sa-tabela tr:last-child td { border-bottom: none; }
+        .sa-tabela .sa-mini-badge {
+            font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 20px;
+        }
+
+        /* ---- Lista de lojas ---- */
+        .sa-section-label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+            color: var(--sa-ink-soft); margin: 28px 2px 10px;
+        }
+        .sa-busca { margin-bottom: 16px; border-radius: 12px; max-width: 420px; }
+        .sa-vazio { color: var(--sa-ink-soft); font-size: 14px; text-align: center; padding: 28px 12px; }
+
+        .sa-loja-card {
+            background: #fff; border: 1px solid var(--sa-line); border-radius: var(--sa-radius);
+            padding: 18px 18px 16px; margin-bottom: 12px; box-shadow: var(--sa-shadow);
+        }
+        .sa-loja-header { display: flex; align-items: flex-start; gap: 12px; }
+        .sa-loja-avatar {
+            width: 42px; height: 42px; min-width: 42px; border-radius: 12px; display: flex;
+            align-items: center; justify-content: center; font-weight: 800; font-size: 16px;
+            color: #fff; background: linear-gradient(135deg, var(--primary-color, #C20000), #FF7A00);
+        }
+        .sa-loja-nome-wrap { flex: 1; min-width: 0; }
+        .sa-loja-nome { font-size: 15px; font-weight: 700; line-height: 1.3; }
+        .sa-loja-slug { font-size: 12.5px; color: var(--sa-ink-soft); text-decoration: none; }
+        .sa-loja-slug:hover { color: var(--sa-blue); }
+        .sa-badge { padding: 4px 11px; border-radius: 20px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+        .sa-badge.ok { background: var(--sa-green-bg); color: var(--sa-green); }
+        .sa-badge.alerta { background: var(--sa-red-bg); color: var(--sa-red); }
+
+        .sa-loja-meta {
+            display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--sa-ink-soft);
+            margin: 12px 0 4px; padding-top: 12px; border-top: 1px solid var(--sa-line);
+        }
+        .sa-loja-meta b { color: var(--sa-ink); font-weight: 600; }
+
+        .sa-loja-acoes { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 14px; }
+        .sa-btn {
+            border: 1px solid var(--sa-line); background: #fafafb; color: var(--sa-ink);
+            border-radius: 9px; padding: 7px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 5px; text-decoration: none;
+            transition: filter 0.15s ease;
+        }
+        .sa-btn:hover { filter: brightness(0.97); }
+        .sa-btn.azul { background: var(--sa-blue-bg); color: var(--sa-blue); border-color: transparent; }
+        .sa-btn.positivo { background: var(--sa-green-bg); color: var(--sa-green); border-color: transparent; }
+        .sa-btn.ambar { background: var(--sa-gold-bg); color: var(--sa-gold); border-color: transparent; }
+        .sa-btn.perigo { background: #fff; color: var(--sa-red); border-color: var(--sa-red-bg); margin-left: auto; }
+        .sa-btn.perigo:hover { background: var(--sa-red-bg); }
+
+        /* ---- Modais ---- */
+        .sa-modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(10,10,14,0.55);
+            align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+        }
+        .sa-modal { background: #fff; border-radius: 16px; padding: 24px; width: 100%; max-width: 420px; max-height: 90vh; overflow-y: auto; }
+        .sa-modal h3 { margin: 0 0 16px; }
+        .sa-modal .form-group { margin-bottom: 12px; }
+        .sa-modal .input-field { border-radius: 10px; }
+        .sa-modal-acoes { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+        .sa-modal-acoes .btn { border-radius: 10px; }
+        .sa-form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+        .sa-form-row .input-field, .sa-form-row select { flex: 1; min-width: 160px; border-radius: 10px; }
+
+        .sa-checkbox-row label { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; font-weight: 500; color: var(--sa-ink-soft); cursor: pointer; }
+        .sa-checkbox-row input[type="checkbox"] { margin-top: 2px; width: 16px; height: 16px; accent-color: var(--sa-red); flex-shrink: 0; }
+
+        /* ---- Banners do hub ---- */
+        .sa-banners-lista { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
+        .sa-banner-item {
+            display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--sa-line);
+            border-radius: 12px; background: #fafafb;
+        }
+        .sa-banner-item img {
+            width: 96px; height: 40px; object-fit: cover; border-radius: 8px; background: var(--sa-line); flex-shrink: 0;
+        }
+        .sa-banner-item-info { flex: 1; min-width: 0; }
+        .sa-banner-item-info strong { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sa-banner-item-info small { color: var(--sa-ink-soft); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+        .sa-banner-item-acoes { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+        .sa-banner-item-acoes button {
+            border: none; background: #fff; border: 1px solid var(--sa-line); width: 30px; height: 30px; border-radius: 8px;
+            cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center;
+        }
+        .sa-banner-item-acoes button:disabled { opacity: 0.35; cursor: not-allowed; }
+        .sa-banner-toggle.ativo { background: var(--sa-green-bg); color: var(--sa-green); border-color: transparent; }
+        .sa-banner-toggle.inativo { background: var(--sa-red-bg); color: var(--sa-red); border-color: transparent; }
+        .sa-banner-form { border-top: 1px dashed var(--sa-line); padding-top: 14px; margin-top: 4px; }
+        .sa-banner-form .input-field { border-radius: 10px; }
+        .sa-banner-form .btn { border-radius: 10px; }
+
+        /* ================= RESPONSIVO ================= */
+        @media (max-width: 980px) {
+            .sa-sidebar { transform: translateX(-100%); }
+            .sa-sidebar.aberta { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,0.3); }
+            .sa-sidebar-backdrop.aberta { display: block; }
+            .sa-main { margin-left: 0; }
+            .sa-hamburger { display: block; }
+            .sa-topbar-search { display: none; }
+            .sa-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .sa-grid-2 { grid-template-columns: 1fr; }
+            .sa-mini-grid { grid-template-columns: 1fr; }
+            .sa-content { padding: 18px 14px 90px; }
+        }
+        @media (max-width: 480px) {
+            .sa-kpi-grid { grid-template-columns: 1fr 1fr; }
+            .sa-welcome-acoes .btn span.texto-longo { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-screen" id="loginScreen">
+        <div class="login-box">
+            <img src="logo.png?v=1" alt="ArretadoGo" class="login-logo">
+            <p>Painel da plataforma — acesso restrito</p>
+            <form id="loginFormSA">
+                <div class="form-group">
+                    <label for="saEmail">E-mail</label>
+                    <input type="email" id="saEmail" class="input-field" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="saSenha">Senha</label>
+                    <input type="password" id="saSenha" class="input-field" required autocomplete="current-password">
+                </div>
+                <div id="saLoginErro" class="login-error" style="display:none;"></div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">Entrar</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="painelSA" style="display:none;">
+
+        <div class="sa-sidebar-backdrop" id="sidebarBackdrop"></div>
+
+        <aside class="sa-sidebar" id="sidebar">
+            <div class="sa-sidebar-brand">
+                <div class="sa-sidebar-brand-logo">🏍️</div>
+                <div>
+                    <strong>ArretadoGo</strong>
+                    <span>Painel da plataforma</span>
+                </div>
+            </div>
+
+            <div class="sa-sidebar-user">
+                <div class="sa-sidebar-user-avatar" id="sidebarAvatar">SA</div>
+                <div>
+                    <div class="sa-sidebar-user-name" id="sidebarUserEmail">super-admin</div>
+                    <span class="sa-sidebar-user-role">SUPER ADMIN</span>
+                </div>
+            </div>
+
+            <nav class="sa-nav">
+                <div class="sa-nav-label">Menu</div>
+                <a class="sa-nav-item ativo" href="#topoSA"><span class="icone">📊</span> Dashboard</a>
+                <a class="sa-nav-item" href="#secaoLojas"><span class="icone">🏬</span> Lojas</a>
+                <a class="sa-nav-item" href="#secaoBanners"><span class="icone">🖼️</span> Banners do hub</a>
+                <button type="button" class="sa-nav-item" id="abrirNovaLojaBtn"><span class="icone">➕</span> Nova loja</button>
+
+                <div class="sa-nav-label">Atalhos</div>
+                <a class="sa-nav-item" href="hub.html" target="_blank"><span class="icone">🧭</span> Hub (página central)</a>
+                <a class="sa-nav-item" href="index.html" target="_blank"><span class="icone">🏠</span> Loja padrão</a>
+                <a class="sa-nav-item" href="cadastro.html" target="_blank"><span class="icone">📝</span> Página de cadastro</a>
+            </nav>
+
+            <div class="sa-sidebar-footer">
+                <button type="button" id="logoutSABtn">🚪 Sair</button>
+            </div>
+        </aside>
+
+        <div class="sa-main">
+            <div class="sa-topbar">
+                <button class="sa-hamburger" id="hamburgerBtn" aria-label="Abrir menu">☰</button>
+                <div class="sa-topbar-search">
+                    <input type="text" id="buscaLojasTopo" placeholder="Buscar loja por nome, slug ou e-mail...">
+                </div>
+                <div class="sa-topbar-right">
+                    <button class="sa-topbar-icon" id="iconeAvisos" title="Avisos">
+                        🔔<span class="badge" id="badgeAvisos" style="display:none;">0</span>
+                    </button>
+                    <div class="sa-topbar-profile">
+                        <div class="sa-topbar-profile-avatar" id="topbarAvatar">SA</div>
+                        <span id="topbarUserEmail">super-admin</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sa-content" id="topoSA">
+
+                <div class="sa-welcome">
+                    <div>
+                        <h1>Olá, bem-vindo de volta 👋</h1>
+                        <p>Visão geral das lojas da plataforma ArretadoGo.</p>
+                    </div>
+                    <div class="sa-welcome-acoes">
+                        <button type="button" class="btn" id="atualizarBtn" style="background:#fff; border:1px solid var(--sa-line);">🔄 <span class="texto-longo">Atualizar</span></button>
+                        <button type="button" class="btn btn-primary" id="abrirNovaLojaBtnTopo">➕ <span class="texto-longo">Nova loja</span></button>
+                    </div>
+                </div>
+
+                <div class="sa-kpi-grid" id="statsGrid"></div>
+
+                <div class="sa-grid-2">
+                    <div class="sa-card">
+                        <h2>📈 Novas lojas</h2>
+                        <p class="sa-card-sub">Cadastros nos últimos 14 dias</p>
+
+                        <div class="sa-mini-grid" id="miniStatsGrid"></div>
+
+                        <div class="sa-chart-wrap" id="graficoNovasLojas"></div>
+                    </div>
+
+                    <div class="sa-card">
+                        <h2>⚠️ Avisos</h2>
+                        <p class="sa-card-sub">Coisas que pedem sua atenção</p>
+                        <div class="sa-avisos-lista" id="listaAvisos"></div>
+                    </div>
+                </div>
+
+                <div class="sa-card">
+                    <h2>🕓 Lojas recentes</h2>
+                    <p class="sa-card-sub">Últimos cadastros na plataforma</p>
+                    <div style="overflow-x:auto;">
+                        <table class="sa-tabela" id="tabelaRecentes">
+                            <thead>
+                                <tr><th>Loja</th><th>Plano</th><th>Status</th><th>Cadastrada em</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="sa-section-label" id="secaoLojas">Todas as lojas</div>
+                <input type="text" id="buscaLojas" class="input-field sa-busca" placeholder="🔎 Buscar por nome, slug ou e-mail...">
+                <div id="listaLojas"></div>
+
+                <div class="sa-section-label" id="secaoBanners">🖼️ Banners do hub</div>
+                <div class="sa-card">
+                    <h2>Banner rotativo</h2>
+                    <p class="sa-card-sub">Aparece no topo do hub.html (página central que lista todas as lojas). Arraste a ordem com ⬆️/⬇️, desative sem apagar com o botão de status.</p>
+
+                    <div id="listaBanners" class="sa-banners-lista"></div>
+
+                    <form id="novoBannerForm" class="sa-banner-form">
+                        <div class="sa-form-row">
+                            <input type="url" id="novoBannerImagem" class="input-field" placeholder="URL da imagem (ideal: 1200x400px)" required>
+                        </div>
+                        <div class="sa-form-row">
+                            <input type="text" id="novoBannerTitulo" class="input-field" placeholder="Título (uso interno, opcional)">
+                            <input type="url" id="novoBannerLink" class="input-field" placeholder="Link ao clicar (opcional, ex: https://...)">
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="adicionarBannerBtn">➕ Adicionar banner</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sa-modal-overlay" id="modalNovaLoja">
+        <div class="sa-modal">
+            <h3>➕ Nova loja</h3>
+            <form id="novaLojaForm">
+                <div class="sa-form-row">
+                    <input type="text" id="novaLojaSlug" class="input-field" placeholder="Slug (ex: pizzariax)" required>
+                    <input type="text" id="novaLojaNome" class="input-field" placeholder="Nome da loja" required>
+                </div>
+                <div class="sa-form-row">
+                    <select id="novaLojaPlano" class="input-field">
+                        <option value="basico">Básico — R$ 39,90</option>
+                        <option value="intermediario" selected>Intermediário — R$ 59,90</option>
+                        <option value="premium">Premium — R$ 79,90</option>
+                    </select>
+                </div>
+                <div class="sa-form-row">
+                    <input type="email" id="novaLojaEmailAdmin" class="input-field" placeholder="E-mail do admin da loja" required>
+                    <input type="password" id="novaLojaSenhaAdmin" class="input-field" placeholder="Senha inicial" required minlength="6">
+                </div>
+                <div class="sa-modal-acoes">
+                    <button type="button" class="sa-btn" id="cancelarNovaLojaBtn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="criarLojaBtn">Criar loja</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="sa-modal-overlay" id="modalEditarLoja">
+        <div class="sa-modal">
+            <h3>✏️ Editar loja</h3>
+            <form id="editarLojaForm">
+                <input type="hidden" id="editarLojaId">
+                <div class="form-group">
+                    <label for="editarLojaNome">Nome da loja</label>
+                    <input type="text" id="editarLojaNome" class="input-field" required>
+                </div>
+                <div class="form-group">
+                    <label for="editarLojaPlano">Plano</label>
+                    <select id="editarLojaPlano" class="input-field">
+                        <option value="basico">Básico — R$ 39,90</option>
+                        <option value="intermediario">Intermediário — R$ 59,90</option>
+                        <option value="premium">Premium — R$ 79,90</option>
+                    </select>
+                </div>
+                <div class="form-group sa-checkbox-row">
+                    <label for="editarLojaOcultoHub">
+                        <input type="checkbox" id="editarLojaOcultoHub">
+                        Ocultar esta loja do hub (hub.html) — a loja continua acessível pelo link direto
+                    </label>
+                </div>
+                <div class="sa-modal-acoes">
+                    <button type="button" class="sa-btn" id="cancelarEdicaoBtn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="salvarEdicaoBtn">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="firebase-config.js?v=2"></script>
+    <script src="super-admin.js?v=2"></script>
+</body>
+</html>

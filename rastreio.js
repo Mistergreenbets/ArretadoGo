@@ -22,6 +22,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
+    // Multi-tenant: o pedido vive dentro da subcoleção da loja, então precisa saber
+    // qual loja é essa (pelo slug na URL) antes de conseguir buscar o pedido.
+    const resultado = await inicializarLoja();
+    if (resultado.erro) {
+        mostrarErro('Link inválido — não encontramos a loja desse pedido.<br>Confira o link que você recebeu no WhatsApp.');
+        return;
+    }
+
     try {
         const config = await getSettings();
         if (config?.tempoEntrega) tempoEntregaConfig = config.tempoEntrega;
@@ -87,12 +95,89 @@ function renderizarPedido(pedido) {
             </div>
             <div class="previsao-box" id="previsaoBox"></div>
             ${mostraMapa ? '<div id="mapaMotoboy"></div><p class="mapa-legenda">📍 Localização aproximada do motoboy, atualizada em tempo real.</p>' : ''}
+            ${status === 'entregue' ? montarAvaliacao(pedido) : ''}
             ${montarDetalhesPedido(pedido)}
         </div>
     `;
 
     atualizarTextoPrevisao(pedido);
     if (mostraMapa) atualizarMapa(pedido.localizacaoAtual);
+    // Só ativa o widget quando ainda não tem avaliação salva — se já tem, o HTML acima
+    // já renderizou o estado "obrigado", sem botões pra ligar nada.
+    if (status === 'entregue' && !pedido.avaliacao) ativarWidgetAvaliacao(pedido.id);
+}
+
+// ========== AVALIAÇÃO PÓS-ENTREGA ==========
+// Só aparece quando o pedido chega em "entregue". Se o cliente já avaliou, mostra a nota
+// enviada em vez do formulário de novo (a regra do Firestore também trava isso do lado do
+// servidor — ver firestore.rules — então é só reflexo visual, não a única proteção).
+function montarAvaliacao(pedido) {
+    if (pedido.avaliacao) {
+        const nota = pedido.avaliacao.nota || 0;
+        const estrelasHtml = [1, 2, 3, 4, 5]
+            .map(i => `<span class="avaliacao-estrela-display ${i <= nota ? 'preenchida' : ''}">★</span>`)
+            .join('');
+        return `
+            <div class="rastreio-secao avaliacao-box">
+                <div class="rastreio-secao-titulo">⭐ Sua avaliação</div>
+                <div class="avaliacao-estrelas-linha">${estrelasHtml}</div>
+                ${pedido.avaliacao.comentario ? `<div class="rastreio-obs">“${escaparHtml(pedido.avaliacao.comentario)}”</div>` : ''}
+                <div class="avaliacao-obrigado">Obrigado pelo feedback! 💛</div>
+            </div>`;
+    }
+
+    return `
+        <div class="rastreio-secao avaliacao-box" id="avaliacaoBox">
+            <div class="rastreio-secao-titulo">⭐ O que achou do seu pedido?</div>
+            <div class="avaliacao-estrelas-linha" id="avaliacaoEstrelas">
+                ${[1, 2, 3, 4, 5].map(i => `<button type="button" class="avaliacao-estrela-btn" data-nota="${i}" aria-label="${i} estrela${i > 1 ? 's' : ''}">★</button>`).join('')}
+            </div>
+            <textarea id="avaliacaoComentario" class="avaliacao-comentario" placeholder="Quer contar mais alguma coisa? (opcional)" maxlength="500"></textarea>
+            <button type="button" class="btn btn-primary avaliacao-enviar-btn" id="avaliacaoEnviarBtn" disabled>Enviar avaliação</button>
+        </div>`;
+}
+
+// Liga os cliques nas estrelas + o envio, depois que o HTML acima já está no DOM.
+// Precisa ser chamado de novo a cada render (o container inteiro é recriado via
+// innerHTML toda vez que o pedido muda no Firestore).
+function ativarWidgetAvaliacao(pedidoId) {
+    const estrelasContainer = document.getElementById('avaliacaoEstrelas');
+    const enviarBtn = document.getElementById('avaliacaoEnviarBtn');
+    if (!estrelasContainer || !enviarBtn) return;
+
+    let notaEscolhida = 0;
+    const botoes = Array.from(estrelasContainer.querySelectorAll('.avaliacao-estrela-btn'));
+
+    const pintarEstrelas = (nota) => {
+        botoes.forEach(btn => btn.classList.toggle('preenchida', Number(btn.dataset.nota) <= nota));
+    };
+
+    botoes.forEach(btn => {
+        btn.addEventListener('click', () => {
+            notaEscolhida = Number(btn.dataset.nota);
+            pintarEstrelas(notaEscolhida);
+            enviarBtn.disabled = false;
+        });
+    });
+
+    enviarBtn.addEventListener('click', async () => {
+        if (!notaEscolhida) return;
+        enviarBtn.disabled = true;
+        enviarBtn.textContent = 'Enviando...';
+        const comentario = document.getElementById('avaliacaoComentario')?.value || '';
+        try {
+            await salvarAvaliacaoPedido(pedidoId, notaEscolhida, comentario);
+            showToast('Obrigado pela avaliação!', 'success');
+            // Não precisa trocar o HTML na mão aqui: observarPedido (onSnapshot) recebe a
+            // confirmação do Firestore sozinho e renderizarPedido roda de novo, já mostrando
+            // o estado "avaliação enviada".
+        } catch (error) {
+            console.error('Erro ao enviar avaliação:', error);
+            showToast('Não foi possível enviar sua avaliação agora. Tente de novo.', 'error');
+            enviarBtn.disabled = false;
+            enviarBtn.textContent = 'Enviar avaliação';
+        }
+    });
 }
 
 function montarCabecalho(pedido) {
@@ -143,10 +228,7 @@ function atualizarTextoPrevisao(pedido) {
     `;
 }
 
-function paraData(timestamp) {
-    if (!timestamp) return null;
-    return typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
-}
+// paraData() agora vem de firebase-config.js (compartilhada com admin.js)
 
 function formatarHora(data) {
     if (!data) return '--:--';

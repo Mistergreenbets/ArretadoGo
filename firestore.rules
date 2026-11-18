@@ -2,86 +2,276 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isMotoboy() {
+    // Você (dono da plataforma) — cria/desativa lojas, não é admin de nenhuma loja específica
+    function isSuperAdmin() {
       return request.auth != null &&
-        exists(/databases/$(database)/documents/motoboys/$(request.auth.uid));
+        exists(/databases/$(database)/documents/superadmins/$(request.auth.uid));
     }
 
-    // CORRIGIDO: antes isso era "qualquer usuário autenticado que não seja motoboy",
-    // o que deixava a loja inteira aberta pra qualquer conta nova criada no Firebase Auth.
-    // Agora confere de verdade a allowlist em /admins, igual o admin.js já faz no client.
-    function isAdmin() {
+    // Admin de UMA loja específica (dono do restaurante). /admins/{uid} guarda o lojaId dele.
+    function isAdminDaLoja(lojaId) {
       return request.auth != null &&
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.lojaId == lojaId;
     }
 
-    match /produtos/{produtoId} {
-      allow read: if true;       // loja pública lê produtos
-      allow write: if isAdmin(); // só admin cria/edita/apaga
+    function isMotoboyDaLoja(lojaId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/lojas/$(lojaId)/motoboys/$(request.auth.uid));
     }
 
-    match /configuracoes/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
+    // Funcionário da cozinha de UMA loja específica — só marca status de pedido
+    // (pendente -> preparando -> pronto), não mexe em mais nada.
+    function isCozinhaDaLoja(lojaId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/lojas/$(lojaId)/cozinha/$(request.auth.uid));
     }
 
-    match /motoboys/{uid} {
-      allow read: if isAdmin() || (request.auth != null && request.auth.uid == uid);
-      allow write: if isAdmin() || (
-        // Motoboy pode alternar o próprio status online/offline, mais nada
-        request.auth != null && request.auth.uid == uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['online']) &&
-        request.resource.data.online is bool
-      );
+    // Allowlist da plataforma (super-admins) e allowlist por loja (admins), ambas só
+    // editáveis manualmente pelo Console ou pelo painel de super-admin — nunca pelo client comum.
+    match /superadmins/{uid} {
+      allow read: if isSuperAdmin() || (request.auth != null && request.auth.uid == uid);
+      allow write: if isSuperAdmin();
     }
-
-    // Allowlist de admins. Só é criada/editada manualmente pelo Console do Firebase
-    // (não existe função no client pra escrever aqui) — mas trava o acesso via regra
-    // também, caso alguém tente escrever direto.
     match /admins/{uid} {
-      allow read: if isAdmin() || (request.auth != null && request.auth.uid == uid);
-      allow write: if isAdmin();
+      allow read: if isSuperAdmin() || (request.auth != null && request.auth.uid == uid);
+      allow write: if isSuperAdmin();
+      // Auto-cadastro: o usuário recém-criado vincula a si mesmo à loja que ELE MESMO
+      // acabou de criar (confere donoUid na loja) — só funciona uma vez, pra doc que
+      // ainda não existe; depois disso só o super-admin mexe (regra "write" acima).
+      allow create: if request.auth != null && request.auth.uid == uid &&
+        get(/databases/$(database)/documents/lojas/$(request.resource.data.lojaId)).data.donoUid == request.auth.uid;
     }
 
-    match /pedidos/{pedidoId} {
-      // Cliente cria pedido pelo checkout, sem estar logado — mas agora valida o
-      // formato mínimo esperado, pra impedir que alguém mande um pedido já
-      // "entregue", com total negativo, ou com campos arbitrários.
-      allow create: if
-        request.resource.data.keys().hasOnly([
-          'codigoPedido', 'nome', 'telefone', 'tipoEntrega', 'endereco',
-          'bairro', 'observacoes', 'itens', 'total', 'criadoEm', 'status', 'taxaEntrega',
-          'formaPagamento', 'trocoPara'
-        ]) &&
-        request.resource.data.keys().hasAll(['nome', 'telefone', 'itens', 'total', 'status']) &&
-        request.resource.data.status == 'pendente' &&
-        request.resource.data.nome is string && request.resource.data.nome.size() > 0 && request.resource.data.nome.size() < 200 &&
-        request.resource.data.telefone is string && request.resource.data.telefone.size() > 0 &&
-        request.resource.data.tipoEntrega in ['retirada', 'delivery'] &&
-        request.resource.data.itens is list && request.resource.data.itens.size() > 0 && request.resource.data.itens.size() < 100 &&
-        request.resource.data.total is number && request.resource.data.total > 0 &&
-        (!('taxaEntrega' in request.resource.data) || request.resource.data.taxaEntrega is number) &&
-        (!('formaPagamento' in request.resource.data) || request.resource.data.formaPagamento in ['pix', 'credito', 'debito', 'dinheiro']) &&
-        (!('trocoPara' in request.resource.data) || request.resource.data.trocoPara == null || request.resource.data.trocoPara is string);
+    // Índice uid -> lojaId dos motoboys (ver comentário em firebase-config.js/criarMotoboy).
+    // O próprio motoboy só lê o registro dele; só admin da loja em questão pode escrever.
+    match /motoboy_index/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if isAdminDaLoja(request.resource.data.lojaId);
+      allow update, delete: if isAdminDaLoja(resource.data.lojaId);
+    }
 
-      // "get" (ler UM pedido pelo ID) é público — é assim que a página de rastreamento
-      // funciona sem exigir login do cliente. O ID do documento é um código longo e
-      // aleatório do Firestore (não é sequencial nem adivinhável), então isso funciona
-      // como um "link secreto": só quem tem o link/QR consegue ler aquele pedido específico.
-      // "list" (buscar/listar TODOS os pedidos) continua travado só pra admin/motoboy —
-      // ninguém consegue "passear" pela coleção inteira sem autorização.
-      allow get: if true;
-      allow list: if isAdmin() || isMotoboy();
+    // Mesma ideia do motoboy_index, mas pra funcionários da cozinha.
+    match /cozinha_index/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if isAdminDaLoja(request.resource.data.lojaId);
+      allow update, delete: if isAdminDaLoja(resource.data.lojaId);
+    }
 
-      // CORRIGIDO: motoboy.js grava também "entregueEm" (timestamp) quando marca o
-      // pedido como entregue, e "motoboyId"/"motoboyNome" quando pega a entrega — usado
-      // pro histórico de entregas de cada motoboy.
-      allow update: if isAdmin() || (
-        isMotoboy() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'localizacaoAtual', 'entregueEm', 'motoboyId', 'motoboyNome']) &&
-        request.resource.data.status in ['saiu_entrega', 'entregue']
+    // Banners rotativos do hub (página central que lista todas as lojas). Leitura pública
+    // (o hub não exige login), escrita só pro super-admin.
+    match /plataforma/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    match /lojas/{lojaId} {
+      // Loja pública lê nome/config/tema pra montar a página (igual hoje o /configuracoes)
+      allow read: if true;
+
+      // Super-admin cria loja já ativa (fluxo manual, painel super-admin).
+      allow create: if isSuperAdmin();
+
+      // Auto-cadastro (página de vendas): o próprio dono cria a loja dele, com 7 dias
+      // de teste grátis já ativos. "ativo:true" aqui não é um cheque em branco — quem
+      // decide se a loja está utilizável de verdade é lojaEstaAtiva() no client, que
+      // compara com trialFim/pagoAte. O que a regra trava é o trialFim em si: no máximo
+      // 8 dias à frente de agora (margem pra diferença de relógio), então adulterar esse
+      // código no navegador não estende o teste grátis.
+      allow create: if request.auth != null &&
+        request.resource.data.donoUid == request.auth.uid &&
+        request.resource.data.ativo == true &&
+        request.resource.data.statusPagamento == 'trial' &&
+        request.resource.data.plano in ['basico', 'intermediario', 'premium'] &&
+        request.resource.data.trialFim is timestamp &&
+        request.resource.data.trialFim > request.time &&
+        request.resource.data.trialFim < request.time + duration.value(8, 'd') &&
+        (!('whatsapp' in request.resource.data) || request.resource.data.whatsapp == null || request.resource.data.whatsapp is string) &&
+        request.resource.data.keys().hasOnly(['nome', 'donoUid', 'emailAdmin', 'whatsapp', 'ativo', 'plano', 'statusPagamento', 'trialFim', 'configuracoes', 'criadoEm']);
+
+      allow delete: if isSuperAdmin();
+      // Admin da loja edita nome/config; só o super-admin mexe em "ativo", "plano" e
+      // "statusPagamento" (ativar após confirmar pagamento, suspender por inadimplência,
+      // trocar de plano) — trava manual por enquanto, sem cobrança automática.
+      allow update: if isSuperAdmin() || (
+        isAdminDaLoja(lojaId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nome', 'configuracoes'])
       );
-      allow delete: if isAdmin();
+
+      match /produtos/{produtoId} {
+        allow read: if true;
+        allow write: if isSuperAdmin() || isAdminDaLoja(lojaId) || (
+          (isMotoboyDaLoja(lojaId) || isCozinhaDaLoja(lojaId)) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estoque', 'quantidadeVendida'])
+        );
+      }
+
+      match /cupons/{cupomId} {
+        allow read: if true;
+        allow create, delete: if isSuperAdmin() || isAdminDaLoja(lojaId);
+        allow update: if isSuperAdmin() || isAdminDaLoja(lojaId) || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usosAtuais']) &&
+          request.resource.data.usosAtuais is int &&
+          (
+            request.resource.data.usosAtuais == resource.data.usosAtuais + 1 ||
+            request.resource.data.usosAtuais == resource.data.usosAtuais - 1
+          )
+        );
+      }
+
+      // Cache do cálculo de frete por km (endereço -> lat/lng/distância/taxa). Escrito
+      // pelo próprio cliente anônimo durante o checkout (sem login), por isso a validação
+      // de schema é o que impede abuso — não dá pra gravar campo nenhum fora da lista.
+      match /enderecosCache/{chaveEndereco} {
+        allow read: if true;
+        allow write: if
+          request.resource.data.keys().hasOnly(['lat', 'lng', 'distanciaKm', 'taxa', 'enderecoOriginal', 'calculadoEm']) &&
+          request.resource.data.lat is number &&
+          request.resource.data.lng is number &&
+          request.resource.data.distanciaKm is number &&
+          request.resource.data.taxa is number;
+      }
+
+      match /cepsCache/{cep} {
+        allow read: if true;
+        allow write: if
+          request.resource.data.keys().hasOnly(['lat', 'lng', 'distanciaKm', 'taxa', 'calculadoEm']) &&
+          request.resource.data.lat is number &&
+          request.resource.data.lng is number &&
+          request.resource.data.distanciaKm is number &&
+          request.resource.data.taxa is number;
+      }
+
+      match /motoboys/{uid} {
+        allow read: if isSuperAdmin() || isAdminDaLoja(lojaId) || (request.auth != null && request.auth.uid == uid);
+        allow write: if isSuperAdmin() || isAdminDaLoja(lojaId) || (
+          request.auth != null && request.auth.uid == uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['online']) &&
+          request.resource.data.online is bool
+        );
+      }
+
+      // Funcionários da cozinha: só o admin cadastra/gerencia (sem auto-edição, ao
+      // contrário do motoboy que pode mudar o próprio "online" — a cozinha não tem
+      // esse conceito).
+      match /cozinha/{uid} {
+        allow read: if isSuperAdmin() || isAdminDaLoja(lojaId) || (request.auth != null && request.auth.uid == uid);
+        allow write: if isSuperAdmin() || isAdminDaLoja(lojaId);
+      }
+
+      match /pedidos/{pedidoId} {
+        allow create: if
+          request.resource.data.keys().hasOnly([
+            'codigoPedido', 'nome', 'telefone', 'tipoEntrega', 'endereco',
+            'bairro', 'observacoes', 'itens', 'total', 'criadoEm', 'status', 'taxaEntrega',
+            'formaPagamento', 'trocoPara', 'cupom', 'pagamentoOnline'
+          ]) &&
+          request.resource.data.keys().hasAll(['nome', 'telefone', 'itens', 'total', 'status']) &&
+          request.resource.data.status in ['pendente', 'aguardando_pagamento'] &&
+          request.resource.data.nome is string && request.resource.data.nome.size() > 0 && request.resource.data.nome.size() < 200 &&
+          request.resource.data.telefone is string && request.resource.data.telefone.size() > 0 &&
+          request.resource.data.tipoEntrega in ['retirada', 'delivery'] &&
+          request.resource.data.itens is list && request.resource.data.itens.size() > 0 && request.resource.data.itens.size() < 100 &&
+          request.resource.data.total is number && request.resource.data.total > 0 &&
+          (!('taxaEntrega' in request.resource.data) || request.resource.data.taxaEntrega is number) &&
+          (!('formaPagamento' in request.resource.data) || request.resource.data.formaPagamento in ['pix', 'credito', 'debito', 'dinheiro']) &&
+          (!('trocoPara' in request.resource.data) || request.resource.data.trocoPara == null || request.resource.data.trocoPara is string) &&
+          (!('cupom' in request.resource.data) || request.resource.data.cupom == null || request.resource.data.cupom is map) &&
+          (!('pagamentoOnline' in request.resource.data) || request.resource.data.pagamentoOnline == null);
+
+        allow get: if true;
+        allow list: if isSuperAdmin() || isAdminDaLoja(lojaId) || isMotoboyDaLoja(lojaId) || isCozinhaDaLoja(lojaId);
+
+        allow update: if isSuperAdmin() || isAdminDaLoja(lojaId) || (
+          isMotoboyDaLoja(lojaId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'localizacaoAtual', 'entregueEm', 'motoboyId', 'motoboyNome', 'estoqueProcessado']) &&
+          request.resource.data.status in ['saiu_entrega', 'entregue']
+        ) || (
+          isCozinhaDaLoja(lojaId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'estoqueProcessado']) &&
+          request.resource.data.status in ['preparando', 'pronto']
+        ) || (
+          // Avaliação pós-entrega — o próprio cliente grava (ele não está autenticado,
+          // é o mesmo modelo de confiança do "allow create" acima: qualquer um com o
+          // link do pedido consegue mandar). Por isso a trava fica toda nos DADOS:
+          // só dá pra escrever em pedido já "entregue", só o campo "avaliacao" e só
+          // UMA vez (se "avaliacao" já existe no doc, essa cláusula nunca mais bate,
+          // então ninguém sobrescreve a nota de ninguém depois de enviada).
+          resource.data.status == 'entregue' &&
+          !('avaliacao' in resource.data) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['avaliacao']) &&
+          request.resource.data.avaliacao.keys().hasOnly(['nota', 'comentario', 'criadoEm']) &&
+          request.resource.data.avaliacao.nota is int &&
+          request.resource.data.avaliacao.nota >= 1 && request.resource.data.avaliacao.nota <= 5 &&
+          request.resource.data.avaliacao.comentario is string &&
+          request.resource.data.avaliacao.comentario.size() < 500 &&
+          request.resource.data.avaliacao.criadoEm is timestamp
+        );
+        allow delete: if isSuperAdmin() || isAdminDaLoja(lojaId);
+      }
+
+      // Credenciais do gateway de pagamento (hoje: token do PagBank) DE CADA LOJA — nunca
+      // fica no doc público /lojas/{lojaId}, que qualquer visitante lê. Só o admin da
+      // própria loja (ou super-admin) consegue ler/gravar; as Cloud Functions leem por
+      // fora dessas regras, usando o Admin SDK (que sempre ignora firestore.rules).
+      // Cadastro de clientes (nome/telefone/endereço/histórico) — alimentado
+      // automaticamente pelo checkout público (upsertCliente em firebase-config.js), por
+      // isso create/update ficam abertos, mas com validação de campos e tipos, igual
+      // /pedidos. Leitura e exclusão só pro dono da loja: é dado pessoal do cliente, não
+      // pode vazar publicamente nem pra outra loja.
+      // Fidelidade: doc mínimo (só telefone/contador/desconto, sem nome/endereço) porque
+      // precisa ser lido pelo checkout público sem login. "get" (buscar 1 doc já sabendo
+      // o telefone) é liberado; "list" (listar todos) continua só pra loja — assim ninguém
+      // consegue varrer/descobrir todos os telefones cadastrados.
+      match /recompensas/{telefoneId} {
+        allow get: if true;
+        allow list: if isSuperAdmin() || isAdminDaLoja(lojaId);
+
+        // Só a loja (via processarFidelidadePedido, chamado autenticado quando o pedido
+        // vira "entregue") pode CRIAR uma recompensa ou reativar/mudar o desconto.
+        allow create: if isSuperAdmin() || isAdminDaLoja(lojaId) || isMotoboyDaLoja(lojaId);
+
+        // Resgate público: o checkout (sem login) só pode marcar a recompensa como usada
+        // (disponivel: true -> false) — nunca inventar um desconto nem reativar.
+        allow update: if isSuperAdmin() || isAdminDaLoja(lojaId) || isMotoboyDaLoja(lojaId) || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['disponivel']) &&
+          request.resource.data.disponivel == false
+        );
+      }
+
+      match /clientes/{clienteId} {
+        allow get, list: if isSuperAdmin() || isAdminDaLoja(lojaId);
+        allow delete: if isSuperAdmin() || isAdminDaLoja(lojaId);
+
+        allow create: if
+          request.resource.data.keys().hasOnly([
+            'nome', 'telefone', 'endereco', 'bairro', 'criadoEm', 'ultimoPedidoEm',
+            'totalPedidos', 'totalGasto', 'aceitaPromocao'
+          ]) &&
+          request.resource.data.keys().hasAll(['nome', 'telefone']) &&
+          request.resource.data.nome is string && request.resource.data.nome.size() < 200 &&
+          request.resource.data.telefone is string && request.resource.data.telefone.size() > 0 && request.resource.data.telefone.size() < 30 &&
+          (!('endereco' in request.resource.data) || request.resource.data.endereco is string) &&
+          (!('bairro' in request.resource.data) || request.resource.data.bairro is string) &&
+          (!('aceitaPromocao' in request.resource.data) || request.resource.data.aceitaPromocao is bool);
+
+        // update: mesma validação de campos/tipos do create — só o dono do dado (o
+        // próprio fluxo de checkout, sem login) grava aqui, então não dá pra exigir
+        // "request.auth" nenhum; a validação de forma é a única proteção possível.
+        allow update: if
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'nome', 'telefone', 'endereco', 'bairro', 'ultimoPedidoEm', 'totalPedidos', 'totalGasto', 'aceitaPromocao'
+          ]) &&
+          request.resource.data.nome is string && request.resource.data.nome.size() < 200 &&
+          request.resource.data.telefone is string && request.resource.data.telefone.size() < 30 &&
+          (!('endereco' in request.resource.data) || request.resource.data.endereco is string) &&
+          (!('bairro' in request.resource.data) || request.resource.data.bairro is string) &&
+          (!('aceitaPromocao' in request.resource.data) || request.resource.data.aceitaPromocao is bool);
+      }
+
+      match /privado/{docId} {
+        allow read, write: if isSuperAdmin() || isAdminDaLoja(lojaId);
+      }
     }
   }
 }

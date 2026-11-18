@@ -356,6 +356,85 @@
             color: #999;
         }
 
+        /* ---- Avaliação pós-entrega ---- */
+        .avaliacao-box {
+            text-align: center;
+        }
+
+        .avaliacao-box .rastreio-secao-titulo {
+            justify-content: center;
+        }
+
+        .avaliacao-estrelas-linha {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 14px;
+        }
+
+        .avaliacao-estrela-btn {
+            background: none;
+            border: none;
+            font-size: 34px;
+            line-height: 1;
+            color: #ddd;
+            cursor: pointer;
+            padding: 2px;
+            transition: transform 0.1s, color 0.15s;
+        }
+
+        .avaliacao-estrela-btn:active {
+            transform: scale(1.15);
+        }
+
+        .avaliacao-estrela-btn.preenchida {
+            color: #FFB800;
+        }
+
+        .avaliacao-estrela-display {
+            font-size: 26px;
+            line-height: 1;
+            color: #ddd;
+        }
+
+        .avaliacao-estrela-display.preenchida {
+            color: #FFB800;
+        }
+
+        .avaliacao-comentario {
+            width: 100%;
+            box-sizing: border-box;
+            resize: vertical;
+            min-height: 60px;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            color: #444;
+            margin-bottom: 12px;
+        }
+
+        .avaliacao-comentario:focus {
+            outline: none;
+            border-color: var(--primary-color, #C20000);
+        }
+
+        .avaliacao-enviar-btn {
+            width: 100%;
+        }
+
+        .avaliacao-enviar-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .avaliacao-obrigado {
+            font-size: 13px;
+            color: #999;
+            font-weight: 500;
+        }
+
         .rastreio-total-row {
             display: flex;
             justify-content: space-between;

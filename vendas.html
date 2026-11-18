@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArretadoGo - Sistema de Pedidos Online e Delivery sem Comissões</title>
+    <meta name="description" content="Crie sua loja de delivery em minutos. Sem mensalidade inicial, 7 dias grátis e sem fidelidade. Gestão completa, cardápio digital e integração com WhatsApp.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* ===== CSS RESET & GLOBAL STYLES ===== */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --vermelho-principal: #C20000;
+            --vermelho-hover: #e60000;
+            --dourado-destaque: #FFC107;
+            --dourado-hover: #ffca28;
+            --bordo-fundo: #2B0000;
+            --bordo-card: #3D0000;
+            --bordo-light: #4A0000;
+            --texto-claro: #FFFFFF;
+            --texto-cinza: #D1D5DB;
+            --texto-escuro: #1F2937;
+            --bg-light: #F9FAFB;
+            --card-white: #FFFFFF;
+            --border-color: #E5E7EB;
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --shadow-subtle: 0 4px 20px rgba(0, 0, 0, 0.08);
+            --shadow-gold: 0 0 25px rgba(255, 193, 7, 0.25);
+            --shadow-red: 0 10px 25px rgba(194, 0, 0, 0.35);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: var(--texto-escuro);
+            background-color: var(--bg-light);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ===== CONTAINER ===== */
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* ===== NAVBAR ===== */
+        .navbar {
+            background-color: rgba(43, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
+            border-bottom: 1px solid rgba(255, 193, 7, 0.15);
+            padding: 16px 0;
+        }
+
+        .navbar-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand-logo {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--texto-claro);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .brand-logo span {
+            color: var(--dourado-destaque);
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 28px;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--texto-cinza);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--dourado-destaque);
+        }
+
+        .nav-buttons {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .btn-header {
+            background-color: var(--vermelho-principal);
+            color: var(--texto-claro);
+            padding: 10px 22px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 14px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(194, 0, 0, 0.3);
+        }
+
+        .btn-header:hover {
+            background-color: var(--vermelho-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(194, 0, 0, 0.4);
+        }
+
+        .btn-login {
+            color: var(--texto-claro);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            transition: all 0.3s ease;
+        }
+
+        .btn-login:hover {
+            color: var(--dourado-destaque);
+        }
+
+        /* ===== HERO SECTION ===== */
+        .hero-section {
+            background: radial-gradient(120% 160% at 50% -10%, #2B0000 0%, #170000 60%, #0A0000 100%);
+            color: var(--texto-claro);
+            padding: 160px 0 100px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 20%, rgba(255, 193, 7, 0.12), transparent 50%),
+                        radial-gradient(circle at 80% 60%, rgba(194, 0, 0, 0.25), transparent 40%);
+            pointer-events: none;
+        }
+
+        .hero-grid {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 40px;
+            align-items: center;
+            position: relative;
+            z-index: 2;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 193, 7, 0.12);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            color: var(--dourado-destaque);
+            padding: 8px 18px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            box-shadow: 0 0 15px rgba(255, 193, 7, 0.1);
+        }
+
+        .hero-title {
+            font-size: 48px;
+            font-weight: 800;
+            line-height: 1.15;
+            margin-bottom: 20px;
+            letter-spacing: -1px;
+        }
+
+        .hero-title span {
+            color: var(--dourado-destaque);
+            background: linear-gradient(135deg, #FFC107 0%, #FFE082 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-subtitle {
+            font-size: 18px;
+            color: var(--texto-cinza);
+            margin-bottom: 32px;
+            font-weight: 400;
+            max-width: 540px;
+        }
+
+        .hero-cta-group {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+
+        .btn-cta-main {
+            background: linear-gradient(135deg, #C20000 0%, #A00000 100%);
+            color: var(--texto-claro);
+            padding: 18px 36px;
+            border-radius: var(--radius-md);
+            font-size: 18px;
+            font-weight: 700;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: var(--shadow-red);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-cta-main:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 15px 30px rgba(194, 0, 0, 0.5), 0 0 20px rgba(255, 193, 7, 0.3);
+            background: linear-gradient(135deg, #E60000 0%, #C20000 100%);
+        }
+
+        .hero-features-list {
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: var(--texto-cinza);
+        }
+
+        .hero-features-list span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Hero Mockup Visual */
+        .hero-visual {
+            position: relative;
+            display: flex;
+            justify-content: center;
+        }
+
+        .mockup-container {
+            position: relative;
+            width: 100%;
+            max-width: 480px;
+        }
+
+        .mockup-dashboard {
+            background: #1E1E24;
+            border: 1px solid rgba(255, 193, 7, 0.2);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), var(--shadow-gold);
+            transform: perspective(1000px) rotateY(-8deg) rotateX(4deg);
+            transition: transform 0.5s ease;
+        }
+
+        .mockup-dashboard:hover {
+            transform: perspective(1000px) rotateY(0deg) rotateX(0deg);
+        }
+
+        .mockup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+
+        .mockup-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .mockup-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .dot-red { background: #FF5F56; }
+        .dot-yellow { background: #FFBD2E; }
+        .dot-green { background: #27C93F; }
+
+        .mockup-title {
+            font-size: 12px;
+            color: var(--dourado-destaque);
+            font-weight: 600;
+        }
+
+        .mockup-stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .mockup-stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .mockup-stat-val {
+            font-size: 18px;
+            font-weight: 700;
+            color: #FFF;
+        }
+
+        .mockup-stat-lbl {
+            font-size: 10px;
+            color: var(--texto-cinza);
+        }
+
+        .mockup-phone {
+            position: absolute;
+            bottom: -30px;
+            right: -20px;
+            width: 200px;
+            background: #000;
+            border: 3px solid #333;
+            border-radius: 28px;
+            padding: 10px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8), 0 0 20px rgba(194, 0, 0, 0.4);
+        }
+
+        .phone-screen {
+            background: #FFF;
+            border-radius: 20px;
+            padding: 12px;
+            color: #333;
+        }
+
+        .phone-header {
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--vermelho-principal);
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .phone-item {
+            background: #F3F4F6;
+            padding: 8px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .phone-btn {
+            background: var(--vermelho-principal);
+            color: #FFF;
+            text-align: center;
+            padding: 6px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 700;
+            margin-top: 8px;
+        }
+
+        /* ===== PROVA SOCIAL ===== */
+        .social-proof-section {
+            background-color: var(--bordo-fundo);
+            padding: 50px 0;
+            border-bottom: 1px solid rgba(255, 193, 7, 0.1);
+        }
+
+        .stats-banner {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+            gap: 20px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 24px;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(255, 193, 7, 0.15);
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 36px;
+            font-weight: 800;
+            color: var(--dourado-destaque);
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: var(--texto-cinza);
+            font-weight: 500;
+        }
+
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+
+        .testimonial-card {
+            background: var(--bordo-card);
+            border: 1px solid rgba(255, 193, 7, 0.15);
+            padding: 24px;
+            border-radius: var(--radius-md);
+            color: var(--texto-claro);
+            position: relative;
+            transition: transform 0.3s ease;
+        }
+
+        .testimonial-card:hover {
+            transform: translateY(-50px) scale(1.01);
+            border-color: var(--dourado-destaque);
+        }
+
+        .testimonial-stars {
+            color: var(--dourado-destaque);
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .testimonial-text {
+            font-size: 14px;
+            color: var(--texto-cinza);
+            font-style: italic;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .author-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: var(--dourado-destaque);
+            color: var(--bordo-fundo);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 16px;
+        }
+
+        .author-info h4 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #FFF;
+        }
+
+        .author-info p {
+            font-size: 12px;
+            color: var(--dourado-destaque);
+        }
+
+        /* ===== BENEFÍCIOS ===== */
+        .benefits-section {
+            padding: 90px 0;
+            background: #FFF;
+        }
+
+        .section-header {
+            text-align: center;
+            max-width: 700px;
+            margin: 0 auto 60px;
+        }
+
+        .section-tag {
+            color: var(--vermelho-principal);
+            font-weight: 700;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .section-title {
+            font-size: 36px;
+            font-weight: 800;
+            color: var(--texto-escuro);
+            line-height: 1.2;
+            margin-bottom: 16px;
+        }
+
+        .section-subtitle {
+            font-size: 16px;
+            color: #6B7280;
+        }
+
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 28px;
+        }
+
+        .benefit-card {
+            background: #FFF;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 32px 24px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .benefit-card:hover {
+            border-color: var(--vermelho-principal);
+            transform: translateY(-5px);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        .benefit-icon {
+            width: 56px;
+            height: 56px;
+            background: rgba(194, 0, 0, 0.08);
+            color: var(--vermelho-principal);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .benefit-card:hover .benefit-icon {
+            background: var(--vermelho-principal);
+            color: #FFF;
+        }
+
+        .benefit-card h3 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: var(--texto-escuro);
+        }
+
+        .benefit-card p {
+            font-size: 14px;
+            color: #6B7280;
+            line-height: 1.5;
+        }
+
+        /* ===== COMO FUNCIONA ===== */
+        .how-it-works-section {
+            padding: 90px 0;
+            background: #F9FAFB;
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+            position: relative;
+        }
+
+        .step-card {
+            background: #FFF;
+            border-radius: var(--radius-md);
+            padding: 36px 28px;
+            text-align: center;
+            box-shadow: var(--shadow-subtle);
+            border: 1px solid var(--border-color);
+            position: relative;
+        }
+
+        .step-number {
+            width: 48px;
+            height: 48px;
+            background: var(--dourado-destaque);
+            color: var(--bordo-fundo);
+            font-size: 20px;
+            font-weight: 800;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
+        }
+
+        .step-card h3 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .step-card p {
+            font-size: 14px;
+            color: #6B7280;
+        }
+
+        /* ===== PLANOS & CONVERSÃO ===== */
+        .conversion-section {
+            padding: 100px 0;
+            background: linear-gradient(180deg, #2B0000 0%, #1A0000 100%);
+            color: var(--texto-claro);
+            position: relative;
+        }
+
+        .split-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 48px;
+            align-items: start;
+        }
+
+        .plans-side h2 {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 12px;
+        }
+
+        .plans-side p {
+            color: var(--texto-cinza);
+            font-size: 15px;
+            margin-bottom: 32px;
+        }
+
+        .plans-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .plano-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1.5px solid rgba(255, 255, 255, 0.12);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: relative;
+        }
+
+        .plano-card:hover {
+            background: rgba(255, 255, 255, 0.09);
+        }
+
+        .plano-card.selecionado {
+            border-color: var(--dourado-destaque);
+            background: rgba(255, 193, 7, 0.08);
+            box-shadow: var(--shadow-gold);
+        }
+
+        .plano-radio {
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .plano-card.selecionado .plano-radio {
+            border-color: var(--dourado-destaque);
+        }
+
+        .plano-card.selecionado .plano-radio::after {
+            content: '';
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--dourado-destaque);
+        }
+
+        .plano-content {
+            flex: 1;
+        }
+
+        .plano-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .plano-nome {
+            font-size: 18px;
+            font-weight: 700;
+            color: #FFF;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .plano-preco {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--dourado-destaque);
+        }
+
+        .plano-detalhe {
+            font-size: 13px;
+            color: var(--texto-cinza);
+        }
+
+        .badge-destaque {
+            background: linear-gradient(135deg, #FFC107 0%, #FF9800 100%);
+            color: #000;
+            font-size: 10px;
+            font-weight: 800;
+            padding: 3px 10px;
+            border-radius: 12px;
+            text-transform: uppercase;
+        }
+
+        .trust-box {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .trust-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--texto-cinza);
+            margin-bottom: 10px;
+        }
+
+        .trust-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .trust-item span {
+            color: var(--dourado-destaque);
+        }
+
+        /* Form Side */
+        .form-side {
+            background: #FFF;
+            color: var(--texto-escuro);
+            border-radius: var(--radius-lg);
+            padding: 36px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .form-side h3 {
+            font-size: 24px;
+            font-weight: 800;
+            margin-bottom: 6px;
+            color: var(--texto-escuro);
+        }
+
+        .form-side p {
+            font-size: 14px;
+            color: #6B7280;
+            margin-bottom: 24px;
+        }
+
+        .plano-resumo-banner {
+            background: #FFFBEB;
+            border: 1px solid #FDE68A;
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #92400E;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .plano-resumo-banner strong {
+            font-weight: 700;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1.5px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            outline: none;
+        }
+
+        .input-field:focus {
+            border-color: var(--vermelho-principal);
+            box-shadow: 0 0 0 3px rgba(194, 0, 0, 0.1);
+        }
+
+        .form-row-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .slug-preview-box {
+            font-size: 12px;
+            margin-top: 6px;
+            font-weight: 500;
+            min-height: 18px;
+        }
+
+        .slug-preview-box.ok { color: #059669; }
+        .slug-preview-box.erro { color: #DC2626; }
+
+        .whatsapp-input-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .whatsapp-prefix {
+            background: #F3F4F6;
+            border: 1.5px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 0 14px;
+            display: flex;
+            align-items: center;
+            font-weight: 700;
+            font-size: 14px;
+            color: #4B5563;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 12px;
+            color: #4B5563;
+            margin: 16px 0 24px;
+            cursor: pointer;
+            line-height: 1.4;
+        }
+
+        .checkbox-label input {
+            margin-top: 2px;
+            accent-color: var(--vermelho-principal);
+        }
+
+        .checkbox-label a {
+            color: var(--vermelho-principal);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .btn-submit {
+            width: 100%;
+            background: linear-gradient(135deg, #C20000 0%, #A00000 100%);
+            color: #FFF;
+            border: none;
+            padding: 16px;
+            border-radius: var(--radius-md);
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-red);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-submit:hover:not(:disabled) {
+            background: linear-gradient(135deg, #E60000 0%, #C20000 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(194, 0, 0, 0.4);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #FFF;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ===== FOOTER ===== */
+        footer {
+            background: #111827;
+            color: #9CA3AF;
+            padding: 40px 0 20px;
+            font-size: 14px;
+            border-top: 1px solid #1F2937;
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .footer-brand {
+            font-size: 20px;
+            font-weight: 800;
+            color: #FFF;
+        }
+
+        .footer-brand span { color: var(--dourado-destaque); }
+
+        .footer-bottom {
+            text-align: center;
+            border-top: 1px solid #1F2937;
+            padding-top: 20px;
+            font-size: 12px;
+            color: #6B7280;
+        }
+
+        /* ===== TOAST FEEDBACK ===== */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 20px;
+            border-radius: var(--radius-sm);
+            background: #1F2937;
+            color: #FFF;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            z-index: 2000;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast.error {
+            background: #DC2626;
+        }
+
+        .toast.success {
+            background: #059669;
+        }
+
+        /* ===== RESPONSIVIDADE ===== */
+        @media (max-width: 992px) {
+            .hero-grid {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+
+            .hero-subtitle {
+                margin: 0 auto 32px;
+            }
+
+            .hero-cta-group {
+                justify-content: center;
+            }
+
+            .hero-features-list {
+                justify-content: center;
+            }
+
+            .split-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .benefits-grid, .steps-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .hero-title {
+                font-size: 32px;
+            }
+
+            .form-row-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .form-side {
+                padding: 24px 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- NAVBAR -->
+    <nav class="navbar">
+        <div class="container navbar-container">
+            <a href="#" class="brand-logo">
+                🍽️ Arretado<span>Go</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#beneficios">Benefícios</a></li>
+                <li><a href="#como-funciona">Como Funciona</a></li>
+                <li><a href="#planos">Planos</a></li>
+            </ul>
+            <div class="nav-buttons">
+                <a href="admin.html" class="btn-login">Entrar</a>
+                <a href="#cadastro" class="btn-header">Criar minha loja</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- HERO SECTION -->
+    <section class="hero-section">
+        <div class="container hero-grid">
+            <div class="hero-content">
+                <div class="hero-badge">⚡ A PLATAFORMA DE DELIVERY Nº 1 PARA CRESCER</div>
+                <h1 class="hero-title">Crie sua loja de delivery em <span>minutos</span></h1>
+                <p class="hero-subtitle">Sem mensalidade inicial • 7 dias grátis • Sem fidelidade. Venda direto pelo WhatsApp e elimine comissões abusivas.</p>
+                <div class="hero-cta-group">
+                    <a href="#cadastro" class="btn-cta-main">
+                        <span>Criar minha loja grátis</span>
+                        ➔
+                    </a>
+                </div>
+                <div class="hero-features-list">
+                    <span>✔ Teste sem cartão</span>
+                    <span>✔ Ativação imediata</span>
+                    <span>✔ Suporte dedicado</span>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="mockup-container">
+                    <div class="mockup-dashboard">
+                        <div class="mockup-header">
+                            <div class="mockup-dots">
+                                <div class="mockup-dot dot-red"></div>
+                                <div class="mockup-dot dot-yellow"></div>
+                                <div class="mockup-dot dot-green"></div>
+                            </div>
+                            <div class="mockup-title">Painel ArretadoGo — Ao Vivo</div>
+                        </div>
+                        <div class="mockup-stats-grid">
+                            <div class="mockup-stat-card">
+                                <div class="mockup-stat-val">R$ 3.840,00</div>
+                                <div class="mockup-stat-lbl">Vendas de Hoje</div>
+                            </div>
+                            <div class="mockup-stat-card">
+                                <div class="mockup-stat-val">48</div>
+                                <div class="mockup-stat-lbl">Pedidos Concluídos</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mockup-phone">
+                        <div class="phone-screen">
+                            <div class="phone-header">
+                                <span>Pizzaria Gourmet</span>
+                                <span>🟢 Aberto</span>
+                            </div>
+                            <div class="phone-item">
+                                <span>🍕 Pizza Calabresa M</span>
+                                <b>R$ 45,00</b>
+                            </div>
+                            <div class="phone-item">
+                                <span>🥤 Coca-Cola 2L</span>
+                                <b>R$ 12,00</b>
+                            </div>
+                            <div class="phone-btn">🛒 Enviar Pedido no WhatsApp</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PROVA SOCIAL -->
+    <section class="social-proof-section">
+        <div class="container">
+            <div class="stats-banner">
+                <div class="stat-item">
+                    <div class="stat-number">0%</div>
+                    <div class="stat-label">Comissão sobre vendas</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">7 dias</div>
+                    <div class="stat-label">De teste grátis</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">100%</div>
+                    <div class="stat-label">Sua loja, sem fidelidade</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- BENEFÍCIOS -->
+    <section class="benefits-section" id="beneficios">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Recursos Poderosos</span>
+                <h2 class="section-title">Tudo o que seu delivery precisa para faturar mais</h2>
+                <p class="section-subtitle">Sua operação completa, intuitiva e sem complicações técnicas.</p>
+            </div>
+
+            <div class="benefits-grid">
+                <div class="benefit-card">
+                    <div class="benefit-icon">⚡</div>
+                    <h3>Loja pronta em minutos</h3>
+                    <p>Cadastre seus produtos, personalize suas cores e tenha seu link exclusivo pronto para vender imediatamente.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon">📦</div>
+                    <h3>Gestão de pedidos</h3>
+                    <p>Painel em tempo real para gerenciar o status de cada pedido: pendente, preparando, saiu para entrega e concluído.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon">📍</div>
+                    <h3>Rastreamento em tempo real</h3>
+                    <p>Seu cliente acompanha a localização exata da entrega no mapa, reduzindo a ansiedade e chamadas de suporte.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon">💬</div>
+                    <h3>Integração com WhatsApp</h3>
+                    <p>Os pedidos chegam formatados e detalhados diretamente no WhatsApp do seu estabelecimento com 1 clique.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon">💳</div>
+                    <h3>Pagamentos online</h3>
+                    <p>Ofereça opções de pagamento via Pix e cartão para facilitar o checkout e acelerar a confirmação de compra.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon">📊</div>
+                    <h3>Relatórios completos</h3>
+                    <p>Acompanhe suas vendas diárias, produtos mais vendidos, desempenho de entrega e faturamento consolidado.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- COMO FUNCIONA -->
+    <section class="how-it-works-section" id="como-funciona">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Passo a Passo</span>
+                <h2 class="section-title">Como funciona para começar hoje</h2>
+                <p class="section-subtitle">Três passos simples para colocar seu delivery no topo.</p>
+            </div>
+
+            <div class="steps-grid">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <h3>Crie sua loja</h3>
+                    <p>Preencha os dados do seu estabelecimento em menos de 1 minuto e obtenha seu endereço personalizado.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <h3>Configure seu cardápio</h3>
+                    <p>Adicione fotos, descrições, preços, categorias, opcionais e defina os horários de funcionamento.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <h3>Comece a vender</h3>
+                    <p>Divulgue seu link nas redes sociais e receba pedidos organizados sem pagar nenhuma comissão.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PLANOS E CADASTRO (SPLIT LAYOUT) -->
+    <section class="conversion-section" id="planos">
+        <div class="container">
+            <div class="split-layout" id="cadastro">
+                <!-- Lado Esquerdo: Escolha de Planos & Elementos de Confiança -->
+                <div class="plans-side">
+                    <h2>Escolha o plano ideal para o seu negócio</h2>
+                    <p>Comece com 7 dias grátis. Mude de plano ou cancele a qualquer momento.</p>
+
+                    <div class="plans-list" id="planosGrid">
+                        <!-- Básico -->
+                        <div class="plano-card" data-plano="basico">
+                            <div class="plano-radio"></div>
+                            <div class="plano-content">
+                                <div class="plano-header-row">
+                                    <span class="plano-nome">Básico</span>
+                                    <span class="plano-preco">R$ 39,90/mês</span>
+                                </div>
+                                <div class="plano-detalhe">Até 30 produtos • Ideal para quem está começando</div>
+                            </div>
+                        </div>
+
+                        <!-- Intermediário (DESTACADO) -->
+                        <div class="plano-card selecionado" data-plano="intermediario">
+                            <div class="plano-radio"></div>
+                            <div class="plano-content">
+                                <div class="plano-header-row">
+                                    <span class="plano-nome">
+                                        Intermediário
+                                        <span class="badge-destaque">Mais Vendido</span>
+                                    </span>
+                                    <span class="plano-preco">R$ 59,90/mês</span>
+                                </div>
+                                <div class="plano-detalhe">Produtos ilimitados + cupons + até 3 motoboys</div>
+                            </div>
+                        </div>
+
+                        <!-- Premium -->
+                        <div class="plano-card" data-plano="premium">
+                            <div class="plano-radio"></div>
+                            <div class="plano-content">
+                                <div class="plano-header-row">
+                                    <span class="plano-nome">Premium</span>
+                                    <span class="plano-preco">R$ 79,90/mês</span>
+                                </div>
+                                <div class="plano-detalhe">Tudo ilimitado + relatórios avançados + suporte VIP</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="trust-box">
+                        <div class="trust-item">
+                            <span>✔</span> Sem fidelidade ou taxa de cancelamento.
+                        </div>
+                        <div class="trust-item">
+                            <span>✔</span> 7 dias de acesso total gratuito.
+                        </div>
+                        <div class="trust-item">
+                            <span>✔</span> Sem necessidade de cartão no cadastro.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lado Direito: Formulário de Cadastro Integration -->
+                <div class="form-side">
+                    <h3>Crie sua conta grátis</h3>
+                    <p>Sua loja estará online em instantes.</p>
+
+                    <div class="plano-resumo-banner">
+                        <span>Plano selecionado:</span>
+                        <strong id="resumoPlanoNome">Intermediário — R$ 59,90/mês</strong>
+                    </div>
+
+                    <form id="cadastroForm">
+                        <div class="form-group">
+                            <label class="form-label" for="cadNomeLoja">Nome da loja</label>
+                            <input type="text" id="cadNomeLoja" class="input-field" placeholder="Ex: Hamburgueria do Chefe" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="cadSlug">Endereço da loja (URL)</label>
+                            <input type="text" id="cadSlug" class="input-field" placeholder="ex: hamburgueriadochefe" required pattern="[a-z0-9-]+">
+                            <div class="slug-preview-box" id="slugPreview"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="cadWhatsapp">WhatsApp comercial</label>
+                            <div class="whatsapp-input-group">
+                                <span class="whatsapp-prefix">+55</span>
+                                <input type="tel" id="cadWhatsapp" class="input-field" placeholder="DDD + Número" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row-2">
+                            <div class="form-group">
+                                <label class="form-label" for="cadEmail">Seu E-mail</label>
+                                <input type="email" id="cadEmail" class="input-field" placeholder="seu@email.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="cadEmailConfirma">Confirmar E-mail</label>
+                                <input type="email" id="cadEmailConfirma" class="input-field" placeholder="seu@email.com" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row-2">
+                            <div class="form-group">
+                                <label class="form-label" for="cadSenha">Senha</label>
+                                <input type="password" id="cadSenha" class="input-field" placeholder="Mínimo 6 caracteres" required minlength="6">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="cadSenhaConfirma">Confirmar Senha</label>
+                                <input type="password" id="cadSenhaConfirma" class="input-field" placeholder="Repita a senha" required minlength="6">
+                            </div>
+                        </div>
+
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="cadTermos" required>
+                            <span>Li e concordo com os <a href="#" onclick="return false;">Termos de Serviço</a> e <a href="#" onclick="return false;">Política de Privacidade</a>.</span>
+                        </label>
+
+                        <button type="submit" class="btn-submit" id="cadastroBtn">
+                            <span>Criar minha loja</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    🍽️ Arretado<span>Go</span>
+                </div>
+                <div>
+                    &copy; 2026 ArretadoGo. Todos os direitos reservados.
+                </div>
+            </div>
+            <div class="footer-bottom">
+                Plataforma de delivery online sem comissões. Tecnologia focada em alta conversão.
+            </div>
+        </div>
+    </footer>
+
+    <!-- TOAST DE FEEDBACK -->
+    <div class="toast" id="toast"></div>
+
+    <!-- SCRIPTS INTEGRADOS DO FIREBASE E LÓGICA DE CADASTRO -->
+    <script src="firebase-config.js?v=2"></script>
+    <script src="cadastro.js?v=2"></script>
+</body>
+</html>

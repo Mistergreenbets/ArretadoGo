@@ -1,9 +1,22 @@
 // ========== UTILITÁRIOS DE STATUS DE PEDIDO ==========
 // Compartilhado entre admin.js e motoboy.js
 
+// Escapa texto antes de injetar em innerHTML — essencial pros campos que vêm
+// direto do cliente no checkout (nome, telefone, endereço, observações, nome
+// dos itens), já que quem faz o pedido não precisa estar logado. Sem isso, um
+// pedido com algo como <img src=x onerror=...> no campo "nome" executaria
+// script dentro da sessão autenticada de quem está vendo o painel (admin ou
+// motoboy) assim que a lista de pedidos fosse renderizada.
+function escaparHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
+    return div.innerHTML;
+}
+
 const STATUS_PEDIDO = [
     { valor: 'pendente', label: '⏳ Pendente' },
     { valor: 'preparando', label: '👨‍🍳 Preparando' },
+    { valor: 'pronto', label: '🛎️ Pronto para Retirada' },
     { valor: 'saiu_entrega', label: '🚗 Saiu para Entrega' },
     { valor: 'entregue', label: '✅ Entregue' },
     { valor: 'cancelado', label: '❌ Cancelado' }
@@ -45,9 +58,15 @@ function formatarCodigoPedido(pedido) {
 }
 
 // Mensagem enviada ao cliente para cada status (edite os textos à vontade)
+// NOTA: desde a mudança pra rastreio por página própria, nem admin.js nem motoboy.js
+// chamam mais enviarAtualizacaoWhatsApp automaticamente a cada troca de status — o cliente
+// acompanha tudo pelo linkRastreio enviado uma vez na confirmação do pedido (em app.js).
+// As funções abaixo continuam aqui, prontas, caso um dia se queira reativar um botão manual
+// de "reenviar status por WhatsApp" em algum dos painéis.
 const MENSAGENS_STATUS = {
     pendente: (pedido) => `Olá, ${pedido.nome}! Recebemos seu pedido *#${formatarCodigoPedido(pedido)}* na *${nomeLojaAtual}* e ele está sendo confirmado. 🙌`,
     preparando: (pedido) => `Olá, ${pedido.nome}! Seu pedido *#${formatarCodigoPedido(pedido)}* na *${nomeLojaAtual}* já está sendo preparado. 👨‍🍳🔥`,
+    pronto: (pedido) => `Olá, ${pedido.nome}! Seu pedido *#${formatarCodigoPedido(pedido)}* na *${nomeLojaAtual}* está pronto e aguardando o motoboy. 🛎️`,
     saiu_entrega: (pedido) => `Olá, ${pedido.nome}! Seu pedido *#${formatarCodigoPedido(pedido)}* saiu para entrega e chega em breve. 🚗💨`,
     entregue: (pedido) => `Olá, ${pedido.nome}! Seu pedido *#${formatarCodigoPedido(pedido)}* foi entregue. Obrigado por pedir na *${nomeLojaAtual}*! Bom apetite 😋`,
     cancelado: (pedido) => `Olá, ${pedido.nome}. Infelizmente seu pedido *#${formatarCodigoPedido(pedido)}* na *${nomeLojaAtual}* foi cancelado. Qualquer dúvida, é só chamar por aqui.`

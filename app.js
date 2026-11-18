@@ -5,13 +5,32 @@ let allProdutos = [];
 const WHATSAPP_NUMBER_PADRAO = '5511999999999'; // Usado só se não houver configuração salva
 let configLoja = {
     nome: 'ArretadoGo',
+    logoUrl: '',
+    saudacao: 'Olá 👋, ArretadoGo',
     telefone: WHATSAPP_NUMBER_PADRAO,
+    redesSociais: {
+        facebook: '',
+        instagram: ''
+    },
     taxaEntrega: 5.00,
     tempoEntrega: 30,
     pedidoMinimo: 0,
     saboresPizza: [],
     adicionaisSanduiche: [],
     bairrosEntrega: [],
+    // Cálculo automático de frete por distância — convive com bairrosEntrega acima.
+    // Quando ativo=true e a loja tem lat/lng configurados, o app tenta calcular a taxa
+    // sozinho a partir do endereço digitado; se não conseguir, cai no bairro manual.
+    calculoPorKm: {
+        ativo: false,
+        provedor: 'nominatim', // 'nominatim' (grátis, hoje) ou 'google' (precisa de googleApiKey)
+        googleApiKey: '',
+        lojaLat: null,
+        lojaLng: null,
+        cidadeUf: '', // ex: "Fortaleza, CE" — essencial pra não confundir endereço com outra cidade
+        valorPorKm: 0, // R$ por km rodado — taxa = distância × valorPorKm, com piso em taxaMinima
+        taxaMinima: 6.00 // nunca cobra menos que isso, mesmo pra endereço bem perto da loja
+    },
     promocoes: [],
     horarioFuncionamento: null,
     hero: {
@@ -44,11 +63,28 @@ let termoBusca = '';
 
 // Seleções feitas no modal de produto (sabores de pizza e adicionais de sanduíche)
 let saboresSelecionados = [];
+// Sabor "de origem" da pizza aberta no modal (ex: abrir "Pizza Calabresa" já preenche este
+// campo com o sabor "Calabresa") — null se o nome do produto não bate com nenhum sabor
+// cadastrado. Ver encontrarSaborBaseDoProduto().
+let saborBaseAtual = null;
 let adicionaisSelecionados = [];
+
+// Cupom de desconto aplicado no carrinho atual: { id, codigo, desconto } ou null
+let cupomAplicado = null;
 
 // ========== INICIALIZAR APP ==========
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('App iniciado...');
+
+    // Multi-tenant: primeiro descobre QUAL loja é essa (pelo slug na URL) antes de
+    // qualquer outra coisa — sem isso, nenhuma chamada ao Firestore sabe de onde ler.
+    const resultado = await inicializarLoja();
+    if (resultado.erro) {
+        mostrarErroLoja(resultado.erro);
+        return;
+    }
+    if (resultado.loja?.nome) nomeLojaAtual = resultado.loja.nome; // usado nas mensagens de WhatsApp
+
     // Produtos e configurações (hero, nome da loja, etc.) são independentes entre si.
     // Antes eram buscados em sequência (produtos primeiro, config só depois), o que
     // fazia a Hero cadastrada no admin demorar mais que o necessário pra aparecer —
@@ -60,11 +96,60 @@ document.addEventListener('DOMContentLoaded', async () => {
     ]);
     inicializarEventos();
     renderizarCategorias();
-    renderizarFiltros();
     renderizarProdutos();
-    renderizarPromocoes();
+    renderizarHeroCarousel();
     carregarCarrinho();
+    preencherDadosClienteSalvos();
 });
+
+// Tela simples de erro pra quando a URL não aponta pra nenhuma loja válida/ativa.
+// Substitui a página inteira — não faz sentido mostrar carrinho/produtos de loja nenhuma.
+function mostrarErroLoja(motivo) {
+    const mensagens = {
+        'sem-slug': 'Endereço incompleto. Confira o link da loja que você recebeu.',
+        'nao-encontrada': 'Loja não encontrada. Confira se o endereço está certo.',
+        'inativa': 'Esta loja está temporariamente indisponível.'
+    };
+    document.body.innerHTML = `
+        <div style="max-width:420px;margin:80px auto;padding:32px;text-align:center;font-family:sans-serif;">
+            <h2 style="margin-bottom:12px;">😕 ${mensagens[motivo] || 'Não foi possível carregar a loja.'}</h2>
+        </div>`;
+}
+
+// ========== LEMBRAR NOME/TELEFONE DO CLIENTE (sem precisar de login) ==========
+// Guarda só no navegador do próprio cliente (localStorage), pra não precisar
+// redigitar nome e telefone toda vez que voltar pra fazer um novo pedido.
+// Endereço fica de fora de propósito — muda de pedido pra pedido.
+const CHAVE_DADOS_CLIENTE = 'arretadogoDadosCliente';
+
+function preencherDadosClienteSalvos() {
+    try {
+        const salvos = JSON.parse(localStorage.getItem(CHAVE_DADOS_CLIENTE) || 'null');
+        if (!salvos) return;
+
+        const nomeInput = document.getElementById('clientName');
+        const telefoneInput = document.getElementById('clientPhone');
+        if (salvos.nome && nomeInput) nomeInput.value = salvos.nome;
+        if (salvos.telefone && telefoneInput) {
+            telefoneInput.value = salvos.telefone;
+            // Preenchimento via JS não dispara o evento "blur" do campo, que é o que
+            // normalmente checa se esse telefone tem recompensa de fidelidade disponível.
+            // Sem isso, o desconto só aparecia se o cliente reeditasse o número manualmente.
+            checarRecompensaFidelidade();
+        }
+    } catch (error) {
+        // localStorage pode estar indisponível (modo privado, etc.) — sem problema, só não preenche
+        console.error('Erro ao carregar dados salvos do cliente:', error);
+    }
+}
+
+function salvarDadosClienteLocal(nome, telefone) {
+    try {
+        localStorage.setItem(CHAVE_DADOS_CLIENTE, JSON.stringify({ nome, telefone }));
+    } catch (error) {
+        console.error('Erro ao salvar dados do cliente:', error);
+    }
+}
 
 // ========== CARREGAR DADOS ==========
 async function carregarProdutos() {
@@ -84,13 +169,31 @@ async function carregarConfigurações() {
         if (config) {
             configLoja = {
                 nome: config.nome || configLoja.nome,
+                logoUrl: config.logoUrl || '',
+                // Se a loja não definiu uma saudação própria, o padrão usa o NOME DELA (não
+                // o nome da plataforma) — antes caía sempre em 'Olá 👋, ArretadoGo' fixo.
+                saudacao: config.saudacao || `Olá 👋, ${config.nome || configLoja.nome}`,
                 telefone: config.telefone || configLoja.telefone,
+                redesSociais: {
+                    facebook: config.redesSociais?.facebook || '',
+                    instagram: config.redesSociais?.instagram || ''
+                },
                 taxaEntrega: config.taxaEntrega ?? configLoja.taxaEntrega,
                 tempoEntrega: config.tempoEntrega ?? configLoja.tempoEntrega,
                 pedidoMinimo: config.pedidoMinimo ?? configLoja.pedidoMinimo,
                 saboresPizza: Array.isArray(config.saboresPizza) ? config.saboresPizza : [],
                 adicionaisSanduiche: Array.isArray(config.adicionaisSanduiche) ? config.adicionaisSanduiche : [],
                 bairrosEntrega: Array.isArray(config.bairrosEntrega) ? config.bairrosEntrega : [],
+                calculoPorKm: {
+                    ativo: config.calculoPorKm?.ativo === true,
+                    provedor: config.calculoPorKm?.provedor || 'nominatim',
+                    googleApiKey: config.calculoPorKm?.googleApiKey || '',
+                    lojaLat: config.calculoPorKm?.lojaLat ?? null,
+                    lojaLng: config.calculoPorKm?.lojaLng ?? null,
+                    cidadeUf: config.calculoPorKm?.cidadeUf || '',
+                    valorPorKm: Number(config.calculoPorKm?.valorPorKm) || 0,
+                    taxaMinima: config.calculoPorKm?.taxaMinima != null ? Number(config.calculoPorKm.taxaMinima) : 6.00
+                },
                 promocoes: Array.isArray(config.promocoes) ? config.promocoes : [],
                 horarioFuncionamento: config.horarioFuncionamento || null,
                 hero: {
@@ -112,32 +215,91 @@ async function carregarConfigurações() {
             el.textContent = configLoja.nome;
         });
 
-        const whatsappEl = document.getElementById('whatsappNumber');
-        if (whatsappEl) whatsappEl.textContent = formatarTelefoneExibicao(configLoja.telefone);
+        const greetingPrefixEl = document.getElementById('headerGreetingPrefix');
+        if (greetingPrefixEl) greetingPrefixEl.textContent = configLoja.saudacao;
 
-        renderizarHero();
+        // Logo redonda da loja (link de imagem configurado em Configurações). Sem link
+        // configurado, ou se o link estiver quebrado, cai num círculo com a inicial do
+        // nome — nunca mostra a logo do ArretadoGo pro cliente final.
+        const logoImgEl = document.getElementById('storeLogoImg');
+        const logoFallbackEl = document.getElementById('storeLogoFallback');
+        if (logoImgEl && logoFallbackEl) {
+            const inicial = (configLoja.nome || '?').trim().charAt(0).toUpperCase() || '?';
+            logoFallbackEl.textContent = inicial;
+            if (configLoja.logoUrl) {
+                logoImgEl.onerror = () => {
+                    logoImgEl.style.display = 'none';
+                    logoFallbackEl.style.display = 'flex';
+                };
+                logoImgEl.onload = () => {
+                    logoImgEl.style.display = 'block';
+                    logoFallbackEl.style.display = 'none';
+                };
+                logoImgEl.src = configLoja.logoUrl;
+            } else {
+                logoImgEl.style.display = 'none';
+                logoFallbackEl.style.display = 'flex';
+            }
+        }
+
+        // Salva a saudação/logo em cache local pra próxima visita aparecer instantaneamente,
+        // sem precisar esperar o Firestore de novo (ver script inline no início do <body>).
+        // Mesmo padrão já usado pra Hero (chave por loja via obterLojaAtual(), pra não vazar
+        // entre lojas diferentes no mesmo navegador).
+        try {
+            localStorage.setItem(`arretadogoGreetingCache:${obterLojaAtual()}`, JSON.stringify({
+                saudacao: configLoja.saudacao,
+                logoUrl: configLoja.logoUrl,
+                nome: configLoja.nome
+            }));
+        } catch (e) {
+            // localStorage indisponível: sem problema, só não vai ter cache pra próxima visita.
+        }
+
+        const facebookEl = document.getElementById('facebookLink');
+        if (facebookEl) {
+            if (configLoja.redesSociais.facebook) {
+                facebookEl.href = configLoja.redesSociais.facebook;
+                facebookEl.style.display = '';
+            } else {
+                facebookEl.style.display = 'none';
+            }
+        }
+
+        const instagramEl = document.getElementById('instagramLink');
+        if (instagramEl) {
+            if (configLoja.redesSociais.instagram) {
+                instagramEl.href = configLoja.redesSociais.instagram;
+                instagramEl.style.display = '';
+            } else {
+                instagramEl.style.display = 'none';
+            }
+        }
+
+        const linksWhatsapp = document.querySelectorAll('.js-whatsapp-link');
+        if (linksWhatsapp.length) {
+            const numeroFormatado = formatarTelefoneExibicao(configLoja.telefone);
+            const hrefWhatsapp = `https://wa.me/${apenasNumeros(configLoja.telefone) || WHATSAPP_NUMBER_PADRAO}`;
+            linksWhatsapp.forEach(el => {
+                el.href = hrefWhatsapp;
+                el.title = `WhatsApp: ${numeroFormatado}`;
+            });
+        }
+
         renderizarOpcoesBairro();
+        configurarUIEntregaPorKm();
         atualizarStatusLoja();
 
         // Reavalia a cada minuto (pra loja abrir/fechar sozinha sem precisar recarregar a página)
         if (!statusLojaIntervalId) {
             statusLojaIntervalId = setInterval(atualizarStatusLoja, 60 * 1000);
         }
-
-        // Salva a Hero em cache local pra próxima visita aparecer instantaneamente,
-        // sem precisar esperar o Firestore de novo (ver script inline no início do <body>).
-        try {
-            localStorage.setItem('arretadogoHeroCache', JSON.stringify(configLoja.hero));
-        } catch (e) {
-            // localStorage pode estar indisponível (modo privado, etc.) — sem problema,
-            // só não vai ter cache pra próxima visita.
-        }
     } catch (error) {
         console.error('Erro ao carregar configurações:', error);
     } finally {
-        // Revela a Hero mesmo se algo der errado (ex: sem internet) — nesse caso mostra os
-        // valores padrão já preenchidos em configLoja, em vez de ficar escondida pra sempre.
-        revelarHero();
+        // Revela a saudação/logo mesmo se algo der errado (ex: sem internet) — nesse caso
+        // mostra os valores padrão já preenchidos em configLoja, em vez de ficar escondida.
+        revelarSaudacao();
     }
 }
 
@@ -149,16 +311,18 @@ function atualizarStatusLoja() {
     const status = calcularStatusLoja(configLoja);
     lojaAbertaAtual = status.aberta;
 
+    atualizarSeloStatusLoja(status);
+
     const banner = document.getElementById('storeStatusBanner');
-    const heroSection = document.getElementById('heroSection');
+    const heroCarouselSection = document.getElementById('heroCarouselSection');
     if (!banner) return;
 
     if (!status.controlado || status.aberta) {
         banner.style.display = 'none';
         banner.textContent = '';
-        // Banner escondido: a Hero volta a ser o primeiro elemento da página, então ela
-        // mesma precisa compensar o header fixo.
-        heroSection?.classList.add('hero-topo');
+        // Banner escondido: o carrossel volta a ser o primeiro elemento da página, então
+        // ele mesmo precisa compensar o header fixo.
+        heroCarouselSection?.classList.add('hero-topo');
         return;
     }
 
@@ -167,54 +331,39 @@ function atualizarStatusLoja() {
         : '';
     banner.textContent = `🔴 Estamos fechados no momento.${proxima}`;
     banner.style.display = 'block';
-    // Banner visível: ele já compensa o header. Se a Hero também compensasse, o espaço
-    // dobraria — por isso tira a margem extra da Hero enquanto o banner estiver na tela.
-    heroSection?.classList.remove('hero-topo');
+    // Banner visível: ele já compensa o header. Se o carrossel também compensasse, o
+    // espaço dobraria — por isso tira a margem extra dele enquanto o banner estiver na tela.
+    heroCarouselSection?.classList.remove('hero-topo');
 }
 
-function revelarHero() {
-    document.getElementById('heroSection')?.classList.remove('hero-loading');
+// Selo "Aberto"/"Fechado" ao lado do nome da loja, no header. Diferente do banner (que só
+// aparece quando fechada), o selo fica sempre visível enquanto houver horário de funcionamento
+// configurado — dá pra ver o status da loja mesmo quando ela está aberta.
+function atualizarSeloStatusLoja(status) {
+    const badge = document.getElementById('storeOpenBadge');
+    if (!badge) return;
+
+    if (!status.controlado) {
+        badge.style.display = 'none';
+        badge.textContent = '';
+        badge.classList.remove('is-aberta', 'is-fechada');
+        return;
+    }
+
+    badge.style.display = 'inline-flex';
+    if (status.aberta) {
+        badge.textContent = 'Aberto';
+        badge.classList.add('is-aberta');
+        badge.classList.remove('is-fechada');
+    } else {
+        badge.textContent = 'Fechado';
+        badge.classList.add('is-fechada');
+        badge.classList.remove('is-aberta');
+    }
 }
 
-// Preenche o título, subtítulo, botão, imagem e selos da seção Hero com o que foi configurado no admin
-function renderizarHero() {
-    const hero = configLoja.hero;
-    if (!hero) return;
-
-    // Fade rápido no texto/imagem da Hero ao trocar pelo conteúdo real — evita a sensação
-    // de "pulo" caso o texto de fábrica do HTML fique visível por uma fração de segundo
-    // enquanto a configuração ainda está carregando.
-    const heroTextEl = document.querySelector('.hero-text');
-    const heroImgWrapperEl = document.querySelector('.hero-image');
-    [heroTextEl, heroImgWrapperEl].forEach(el => {
-        if (el) el.style.transition = 'opacity 0.2s ease';
-    });
-
-    const setText = (id, value) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = value;
-    };
-
-    setText('heroPrefixoTexto', hero.prefixo);
-    setText('heroDestaqueTexto', hero.destaque);
-    setText('heroSubtituloTexto', hero.subtitulo);
-    setText('heroBotaoTextoEl', hero.botaoTexto);
-
-    const imgEl = document.getElementById('heroImagemEl');
-    if (imgEl && hero.imagem) imgEl.src = hero.imagem;
-
-    const stats = Array.isArray(hero.stats) ? hero.stats : [];
-    stats.slice(0, 3).forEach((stat, i) => {
-        setText(`heroStat${i + 1}ValorEl`, stat.valor || '');
-        setText(`heroStat${i + 1}LabelEl`, stat.label || '');
-    });
-
-    // Garante opacidade normal após preencher (só entra em ação se algo tiver escondido antes)
-    requestAnimationFrame(() => {
-        [heroTextEl, heroImgWrapperEl].forEach(el => {
-            if (el) el.style.opacity = '1';
-        });
-    });
+function revelarSaudacao() {
+    document.getElementById('headerGreeting')?.classList.remove('greeting-loading');
 }
 
 // Preenche o <select> de bairros usado no checkout de delivery
@@ -237,6 +386,232 @@ function renderizarOpcoesBairro() {
     outraOpcao.dataset.taxa = configLoja.taxaEntrega;
     outraOpcao.textContent = `Outro bairro (taxa padrão R$ ${Number(configLoja.taxaEntrega).toFixed(2)})`;
     select.appendChild(outraOpcao);
+}
+
+// ========== FRETE AUTOMÁTICO POR KM ==========
+// Resultado do último cálculo bem-sucedido: { distanciaKm, taxa, bairro } ou null (nada
+// calculado ainda / falhou / desativado). obterTaxaEntregaSelecionada() lê essa variável.
+let freteAutoResultado = null;
+let freteAutoDebounceTimer = null;
+
+// Mensagens compartilhadas entre o fluxo de texto livre (debounce) e o fluxo de sugestão
+// selecionada (confirmação imediata) — mesmo texto pro cliente nos dois casos.
+const MENSAGENS_ERRO_FRETE_AUTO = {
+    'endereco-nao-encontrado': '⚠️ Não localizamos esse endereço — selecione seu bairro abaixo.',
+    'sem-valor-km': '⚠️ Frete automático não configurado — selecione seu bairro abaixo.',
+    'erro-geocoding': '⚠️ Não foi possível calcular agora — selecione seu bairro abaixo.'
+};
+
+// ---------- PRÉVIA DE ENDEREÇO (estilo Uber) ----------
+let sugestoesDebounceTimer = null;
+let sugestoesAtuais = []; // cache da última lista renderizada, pra navegação por teclado
+let indiceSugestaoAtiva = -1;
+
+// Chamado a cada digitação (debounce curto, 350ms) pra mostrar a prévia de rua/bairro/
+// cidade embaixo do campo — igual apps de transporte fazem. Não confunde com o cálculo de
+// frete em si (que roda com debounce próprio, mais longo, ver agendarCalculoFreteAutomatico).
+function agendarBuscaSugestoesEndereco() {
+    clearTimeout(sugestoesDebounceTimer);
+    const enderecoInput = document.getElementById('clientAddress');
+    const texto = enderecoInput?.value.trim() || '';
+
+    if (texto.length < 3 || !configLoja.calculoPorKm?.ativo) {
+        esconderSugestoesEndereco();
+        return;
+    }
+
+    sugestoesDebounceTimer = setTimeout(async () => {
+        // Se o cliente já continuou digitando/apagou enquanto a busca rodava, essa
+        // resposta ficou obsoleta — confere de novo antes de renderizar.
+        const textoAtual = enderecoInput?.value.trim() || '';
+        if (textoAtual !== texto) return;
+
+        const sugestoes = await buscarSugestoesEndereco(texto, configLoja.calculoPorKm);
+        if ((enderecoInput?.value.trim() || '') !== texto) return; // resposta obsoleta
+
+        console.debug(`[sugestões de endereço] "${texto}" → ${sugestoes.length} resultado(s)`);
+        renderizarSugestoesEndereco(sugestoes);
+    }, 350);
+}
+
+function renderizarSugestoesEndereco(lista) {
+    const box = document.getElementById('enderecoSugestoesBox');
+    if (!box) return;
+
+    sugestoesAtuais = lista;
+    indiceSugestaoAtiva = -1;
+
+    if (!lista.length) {
+        esconderSugestoesEndereco();
+        return;
+    }
+
+    box.innerHTML = '';
+    lista.forEach((sugestao, indice) => {
+        const item = document.createElement('div');
+        item.className = 'endereco-sugestao-item';
+        item.dataset.indice = indice;
+        item.innerHTML = `
+            <span class="endereco-sugestao-titulo">📍 ${sugestao.titulo}</span>
+            ${sugestao.subtitulo ? `<span class="endereco-sugestao-subtitulo">${sugestao.subtitulo}</span>` : ''}
+        `;
+        item.addEventListener('click', () => selecionarSugestaoEndereco(sugestao));
+        box.appendChild(item);
+    });
+    box.style.display = 'block';
+}
+
+function esconderSugestoesEndereco() {
+    const box = document.getElementById('enderecoSugestoesBox');
+    if (!box) return;
+    box.style.display = 'none';
+    box.innerHTML = '';
+    sugestoesAtuais = [];
+    indiceSugestaoAtiva = -1;
+}
+
+// Cliente clicou (ou confirmou pelo teclado) numa sugestão do banco local de ruas. O nome
+// da rua já vem com a grafia CERTA (direto do OpenStreetMap), então em vez de usar o ponto
+// aproximado da rua inteira (que pode estar longe do número certo), rodamos o geocoding de
+// verdade agora — com a grafia corrigida, a taxa de acerto do Nominatim/Google sobe muito.
+async function selecionarSugestaoEndereco(sugestao) {
+    const enderecoInput = document.getElementById('clientAddress');
+    if (enderecoInput) enderecoInput.value = sugestao.enderecoCompleto;
+    esconderSugestoesEndereco();
+
+    // Cancela qualquer cálculo por texto livre pendente — já vamos calcular agora mesmo.
+    clearTimeout(freteAutoDebounceTimer);
+    mostrarStatusFreteAuto('📍 Calculando frete...', null);
+
+    const resultado = await calcularFreteAutomatico(enderecoInput.value, configLoja.calculoPorKm);
+    if (resultado.ok) {
+        freteAutoResultado = { distanciaKm: resultado.distanciaKm, taxa: resultado.taxa, bairro: resultado.bairro || null };
+        const sufixoBairro = resultado.bairro ? ` — ${resultado.bairro}` : '';
+        mostrarStatusFreteAuto(
+            `📍 Frete calculado: R$ ${resultado.taxa.toFixed(2)} (${resultado.distanciaKm.toFixed(1)} km${sufixoBairro})`,
+            'ok'
+        );
+        exibirSelectBairroComoFallback(false);
+    } else {
+        freteAutoResultado = null;
+        mostrarStatusFreteAuto(MENSAGENS_ERRO_FRETE_AUTO[resultado.motivo] || '⚠️ Selecione seu bairro abaixo.', 'erro');
+        exibirSelectBairroComoFallback(true);
+    }
+    atualizarCarrinho();
+}
+
+// Setinhas + Enter pra navegar na lista sem precisar do mouse (igual qualquer autocomplete).
+function navegarSugestoesEndereco(e) {
+    const box = document.getElementById('enderecoSugestoesBox');
+    if (!box || box.style.display === 'none' || !sugestoesAtuais.length) return;
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const direcao = e.key === 'ArrowDown' ? 1 : -1;
+        indiceSugestaoAtiva = (indiceSugestaoAtiva + direcao + sugestoesAtuais.length) % sugestoesAtuais.length;
+        [...box.children].forEach((item, i) => item.classList.toggle('ativa', i === indiceSugestaoAtiva));
+        box.children[indiceSugestaoAtiva]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter' && indiceSugestaoAtiva >= 0) {
+        e.preventDefault();
+        selecionarSugestaoEndereco(sugestoesAtuais[indiceSugestaoAtiva]);
+    } else if (e.key === 'Escape') {
+        esconderSugestoesEndereco();
+    }
+}
+
+// Decide, uma vez ao carregar a loja, se mostra o campo de endereço como cálculo
+// automático (escondendo o select de bairro) ou mantém o fluxo manual de sempre.
+// O select de bairro nunca é removido de verdade — ele volta a aparecer sozinho se o
+// cálculo automático falhar pra um endereço específico (fallback sem travar o cliente).
+function configurarUIEntregaPorKm() {
+    const ativo = configLoja.calculoPorKm?.ativo === true
+        && configLoja.calculoPorKm.lojaLat != null
+        && configLoja.calculoPorKm.lojaLng != null;
+
+    // A visibilidade do chip é controlada por mostrarStatusFreteAuto() (classe is-visible),
+    // não por display inline — aqui só decide se o fluxo automático está habilitado ou não.
+
+    const bairroSelect = document.getElementById('clientBairro');
+    if (bairroSelect && ativo) {
+        // Só some do fluxo enquanto o cálculo automático estiver funcionando; reaparece
+        // automaticamente em caso de falha (ver processarFreteAutomatico).
+        bairroSelect.dataset.escondidoPeloCalculoKm = 'true';
+    }
+
+    // Pré-carrega o banco local de ruas em segundo plano — assim quando o cliente digitar
+    // a primeira letra a prévia já está pronta em memória, sem esperar o fetch.
+    if (ativo) carregarBaseRuas();
+}
+
+function mostrarStatusFreteAuto(texto, tipo) {
+    const statusEl = document.getElementById('freteAutoStatus');
+    if (!statusEl) return;
+
+    if (!texto) {
+        statusEl.classList.remove('is-visible', 'frete-auto-badge--calculando', 'frete-auto-badge--ok', 'frete-auto-badge--erro');
+        return;
+    }
+
+    statusEl.textContent = texto;
+    statusEl.classList.add('is-visible');
+    statusEl.classList.remove('frete-auto-badge--calculando', 'frete-auto-badge--ok', 'frete-auto-badge--erro');
+    const classePorTipo = { ok: 'frete-auto-badge--ok', erro: 'frete-auto-badge--erro' };
+    statusEl.classList.add(classePorTipo[tipo] || 'frete-auto-badge--calculando');
+}
+
+// Chamado a cada digitação no campo de endereço (com debounce) quando o cálculo por km
+// está ativo. Roda "em silêncio" — o cliente só vê o texto de status atualizar sozinho.
+function agendarCalculoFreteAutomatico() {
+    if (!(configLoja.calculoPorKm?.ativo && configLoja.calculoPorKm.lojaLat != null && configLoja.calculoPorKm.lojaLng != null)) {
+        return;
+    }
+
+    clearTimeout(freteAutoDebounceTimer);
+    const enderecoInput = document.getElementById('clientAddress');
+    const endereco = enderecoInput?.value.trim() || '';
+
+    if (endereco.length < 8) {
+        freteAutoResultado = null;
+        mostrarStatusFreteAuto('', null);
+        exibirSelectBairroComoFallback(false);
+        atualizarCarrinho();
+        return;
+    }
+
+    mostrarStatusFreteAuto('📍 Calculando frete...', null);
+
+    // Espera 800ms sem digitar antes de chamar a API — evita geocodificar a cada letra.
+    freteAutoDebounceTimer = setTimeout(async () => {
+        const resultado = await calcularFreteAutomatico(endereco, configLoja.calculoPorKm);
+
+        if (resultado.ok) {
+            freteAutoResultado = { distanciaKm: resultado.distanciaKm, taxa: resultado.taxa, bairro: resultado.bairro || null };
+            const sufixoBairro = resultado.bairro ? ` — ${resultado.bairro}` : '';
+            mostrarStatusFreteAuto(
+                `📍 Frete calculado: R$ ${resultado.taxa.toFixed(2)} (${resultado.distanciaKm.toFixed(1)} km${sufixoBairro})`,
+                'ok'
+            );
+            exibirSelectBairroComoFallback(false);
+        } else {
+            // Não travou o cliente: só volta pro fluxo manual de bairro.
+            freteAutoResultado = null;
+            mostrarStatusFreteAuto(MENSAGENS_ERRO_FRETE_AUTO[resultado.motivo] || '⚠️ Selecione seu bairro abaixo.', 'erro');
+            exibirSelectBairroComoFallback(true);
+        }
+        atualizarCarrinho();
+    }, 800);
+}
+
+// Mostra/esconde o select de bairro como plano B, sem nunca impedir o checkout.
+function exibirSelectBairroComoFallback(mostrar) {
+    const bairroSelect = document.getElementById('clientBairro');
+    if (!bairroSelect) return;
+    if (mostrar) {
+        bairroSelect.style.display = 'block';
+    } else if (bairroSelect.dataset.escondidoPeloCalculoKm === 'true') {
+        bairroSelect.style.display = 'none';
+        bairroSelect.value = '';
+    }
 }
 
 // Deixa só números (usado para montar o link do WhatsApp)
@@ -268,7 +643,170 @@ function formatarFormaPagamento(metodo) {
     return labels[metodo] || 'Não informado';
 }
 
-// ========== BANNER ROTATIVO DE PROMOÇÕES ==========
+// ========== CARROSSEL DO TOPO (promoções cadastradas no admin) ==========
+// Antes existia uma seção "Hero" fixa no topo e um carrossel de promoções separado,
+// mais embaixo. A Hero foi removida: agora o carrossel de promoções é a própria seção
+// do topo, sem nenhum slide fixo — só o que estiver cadastrado em "Promoções" no admin.
+let heroCarouselIndex = 0;
+let heroCarouselIntervalId = null;
+const HERO_CAROUSEL_INTERVALO_MS = 5000;
+
+function irParaCardapio() {
+    document.getElementById('produtos')?.scrollIntoView({ behavior: 'smooth' });
+}
+
+function renderizarHeroCarousel() {
+    const section = document.getElementById('heroCarouselSection');
+    const track = document.getElementById('heroCarouselTrack');
+    const dotsContainer = document.getElementById('heroCarouselDots');
+    if (!track || !dotsContainer) return;
+
+    const promoAtivas = (configLoja.promocoes || []).filter(p => p.ativo);
+    const slides = promoAtivas.length > 0 ? promoAtivas : [PROMOCAO_PADRAO];
+
+    track.innerHTML = slides.map(promo => `
+        <div class="hero-carousel-slide" role="button" tabindex="0" aria-label="Ver cardápio">
+            <div class="hero-image">
+                <img src="${promo.imagem}" alt="${promo.titulo || ''}" class="showcase-img">
+            </div>
+        </div>
+    `).join('');
+
+    track.querySelectorAll('.hero-carousel-slide').forEach(slide => {
+        slide.addEventListener('click', irParaCardapio);
+        slide.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); irParaCardapio(); }
+        });
+    });
+
+    const totalSlides = slides.length;
+
+    // Dots
+    dotsContainer.innerHTML = totalSlides > 1
+        ? Array.from({ length: totalSlides }, (_, i) =>
+            `<button type="button" class="promo-dot${i === 0 ? ' active' : ''}" data-index="${i}" aria-label="Ir para o slide ${i + 1}"></button>`
+          ).join('')
+        : '';
+    dotsContainer.querySelectorAll('.promo-dot').forEach(dot => {
+        dot.addEventListener('click', () => irParaSlideHero(parseInt(dot.dataset.index)));
+    });
+
+    // Barra de progresso só faz sentido com mais de 1 slide
+    const progressWrap = document.getElementById('heroCarouselProgress');
+    if (progressWrap) progressWrap.style.display = totalSlides > 1 ? 'block' : 'none';
+
+    heroCarouselIndex = 0;
+    atualizarPosicaoHeroCarousel(true);
+    iniciarAutoplayHeroCarousel(totalSlides);
+
+    // Revela a seção (evita o "flash" do carrossel vazio enquanto o Firestore responde)
+    section?.classList.remove('carousel-loading');
+}
+
+function atualizarPosicaoHeroCarousel(semTransicao) {
+    const track = document.getElementById('heroCarouselTrack');
+    if (!track) return;
+    if (semTransicao) {
+        track.style.transition = 'none';
+        track.style.transform = `translateX(-${heroCarouselIndex * 100}%)`;
+        // Força reflow antes de reativar a transição, senão o "sem transição" não pega
+        void track.offsetWidth;
+        track.style.transition = '';
+    } else {
+        track.style.transform = `translateX(-${heroCarouselIndex * 100}%)`;
+    }
+
+    document.querySelectorAll('#heroCarouselDots .promo-dot').forEach((dot, i) => {
+        dot.classList.toggle('active', i === heroCarouselIndex);
+    });
+}
+
+function iniciarAutoplayHeroCarousel(totalSlides) {
+    if (heroCarouselIntervalId) { clearInterval(heroCarouselIntervalId); heroCarouselIntervalId = null; }
+    const bar = document.getElementById('heroCarouselProgressBar');
+    if (totalSlides > 1) {
+        if (bar) {
+            bar.style.animation = 'none';
+            void bar.offsetWidth;
+            bar.style.animation = `heroCarouselProgress ${HERO_CAROUSEL_INTERVALO_MS}ms linear`;
+        }
+        heroCarouselIntervalId = setInterval(() => avancarHeroCarousel(1), HERO_CAROUSEL_INTERVALO_MS);
+    } else if (bar) {
+        bar.style.animation = 'none';
+    }
+}
+
+function avancarHeroCarousel(direcao) {
+    const totalSlides = document.querySelectorAll('#heroCarouselTrack .hero-carousel-slide').length;
+    if (totalSlides === 0) return;
+    heroCarouselIndex = (heroCarouselIndex + direcao + totalSlides) % totalSlides;
+    atualizarPosicaoHeroCarousel(false);
+    iniciarAutoplayHeroCarousel(totalSlides); // reinicia o timer/barra a cada troca (manual ou automática)
+}
+
+function irParaSlideHero(index) {
+    heroCarouselIndex = index;
+    atualizarPosicaoHeroCarousel(false);
+    const totalSlides = document.querySelectorAll('#heroCarouselTrack .hero-carousel-slide').length;
+    iniciarAutoplayHeroCarousel(totalSlides);
+}
+
+// Pausa o autoplay com o mouse em cima (desktop)
+document.getElementById('heroCarousel')?.addEventListener('mouseenter', () => {
+    if (heroCarouselIntervalId) { clearInterval(heroCarouselIntervalId); heroCarouselIntervalId = null; }
+    const bar = document.getElementById('heroCarouselProgressBar');
+    if (bar) bar.style.animationPlayState = 'paused';
+});
+document.getElementById('heroCarousel')?.addEventListener('mouseleave', () => {
+    const totalSlides = document.querySelectorAll('#heroCarouselTrack .hero-carousel-slide').length;
+    const bar = document.getElementById('heroCarouselProgressBar');
+    if (bar) bar.style.animationPlayState = 'running';
+    if (totalSlides > 1 && !heroCarouselIntervalId) {
+        heroCarouselIntervalId = setInterval(() => avancarHeroCarousel(1), HERO_CAROUSEL_INTERVALO_MS);
+    }
+});
+
+// Swipe no touch (mobile) — arrasta o dedo pra trocar de slide, igual carrossel de app nativo
+(function configurarSwipeHeroCarousel() {
+    const track = document.getElementById('heroCarouselTrack');
+    if (!track) return;
+    let startX = 0;
+    let deltaX = 0;
+    let arrastando = false;
+
+    track.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+        deltaX = 0;
+        arrastando = true;
+        if (heroCarouselIntervalId) { clearInterval(heroCarouselIntervalId); heroCarouselIntervalId = null; }
+        track.style.transition = 'none';
+    }, { passive: true });
+
+    track.addEventListener('touchmove', (e) => {
+        if (!arrastando) return;
+        deltaX = e.touches[0].clientX - startX;
+        track.style.transform = `translateX(calc(-${heroCarouselIndex * 100}% + ${deltaX}px))`;
+    }, { passive: true });
+
+    track.addEventListener('touchend', () => {
+        if (!arrastando) return;
+        arrastando = false;
+        track.style.transition = '';
+        const limiar = track.offsetWidth * 0.18; // ~18% da largura já troca de slide
+        if (deltaX < -limiar) {
+            avancarHeroCarousel(1);
+        } else if (deltaX > limiar) {
+            avancarHeroCarousel(-1);
+        } else {
+            atualizarPosicaoHeroCarousel(false);
+            const totalSlides = document.querySelectorAll('#heroCarouselTrack .hero-carousel-slide').length;
+            iniciarAutoplayHeroCarousel(totalSlides);
+        }
+    });
+})();
+
+// ========== BANNER ROTATIVO DE PROMOÇÕES (legado — mantida sem uso; a seção que ela
+// preenchia foi consolidada no carrossel do topo, ver renderizarHeroCarousel() acima) ==========
 function renderizarPromocoes() {
     const track = document.getElementById('promoTrack');
     const dotsContainer = document.getElementById('promoDots');
@@ -379,6 +917,16 @@ function getIconeCategoria(cat) {
     return ICONES_CATEGORIA[cat] || ICONES_CATEGORIA['outros'];
 }
 
+// Nomes de exibição das categorias fixas — usado tanto na visão agrupada ("Todos") quanto
+// no cabeçalho de categoria única (ver renderizarProdutos/renderizarProdutosAgrupados).
+const NOMES_CATEGORIA = {
+    'burgers': 'Burgers',
+    'pizza': 'Pizzas',
+    'bebidas': 'Bebidas',
+    'acompanhamentos': 'Acompanhamentos',
+    'sobremesas': 'Sobremesas'
+};
+
 // ========== RENDERIZAR CATEGORIAS ==========
 function renderizarCategorias() {
     const categorias = ['burgers', 'pizza', 'bebidas', 'acompanhamentos', 'sobremesas'];
@@ -412,48 +960,6 @@ function renderizarCategorias() {
             card.addEventListener('click', () => filtrarPorCategoria(cat));
             container.appendChild(card);
         }
-    });
-}
-
-// ========== RENDERIZAR FILTROS (barra acima da grade de produtos) ==========
-function renderizarFiltros() {
-    const categorias = ['burgers', 'pizza', 'bebidas', 'acompanhamentos', 'sobremesas'];
-    const nomesFiltro = {
-        'burgers': 'Burgers',
-        'pizza': 'Pizzas',
-        'bebidas': 'Bebidas',
-        'acompanhamentos': 'Acompanhamentos',
-        'sobremesas': 'Sobremesas'
-    };
-
-    const btnTodos = document.querySelector('.filter-btn[data-filter="todos"]');
-    if (btnTodos) {
-        btnTodos.innerHTML = `<span class="filter-btn-icon">${getIconeCategoria('todos')}</span> Todos`;
-        btnTodos.addEventListener('click', () => aplicarFiltroBotao('todos'));
-    }
-
-    const container = document.getElementById('filterButtons');
-    container.innerHTML = '';
-
-    categorias.forEach(cat => {
-        const count = allProdutos.filter(p => p.categoria === cat).length;
-        if (count > 0) {
-            const btn = document.createElement('button');
-            btn.className = 'filter-btn';
-            btn.dataset.filter = cat;
-            btn.innerHTML = `<span class="filter-btn-icon">${getIconeCategoria(cat)}</span> ${nomesFiltro[cat] || capitalize(cat)}`;
-            btn.addEventListener('click', () => aplicarFiltroBotao(cat));
-            container.appendChild(btn);
-        }
-    });
-}
-
-// Aplica o filtro e atualiza qual botão/card fica marcado como ativo
-function aplicarFiltroBotao(categoria) {
-    filtrarPorCategoria(categoria);
-
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.filter === categoria);
     });
 }
 
@@ -510,13 +1016,6 @@ function renderizarProdutosAgrupados(container) {
     container.innerHTML = '';
 
     const categorias = ['burgers', 'pizza', 'bebidas', 'acompanhamentos', 'sobremesas'];
-    const nomesCategoria = {
-        'burgers': 'Burgers',
-        'pizza': 'Pizzas',
-        'bebidas': 'Bebidas',
-        'acompanhamentos': 'Acompanhamentos',
-        'sobremesas': 'Sobremesas'
-    };
 
     // Categorias conhecidas primeiro, na ordem fixa acima; qualquer categoria nova
     // que apareça nos produtos (fora dessa lista) entra ordenada por nome, no final.
@@ -533,7 +1032,7 @@ function renderizarProdutosAgrupados(container) {
 
         const titulo = document.createElement('h4');
         titulo.className = 'category-section-title';
-        titulo.innerHTML = `<span class="category-section-icon">${getIconeCategoria(cat)}</span> ${nomesCategoria[cat] || capitalize(cat)}`;
+        titulo.innerHTML = `<span class="category-section-icon">${getIconeCategoria(cat)}</span> ${NOMES_CATEGORIA[cat] || capitalize(cat)}`;
         secao.appendChild(titulo);
 
         const grid = document.createElement('div');
@@ -547,6 +1046,12 @@ function renderizarProdutosAgrupados(container) {
 
 function renderizarProdutos(acumular = false) {
     const container = document.getElementById('productsContainer');
+
+    // Fica FORA do container, como irmão dele — precisa limpar em toda renderização
+    // (agrupada, categoria única ou vazia), senão troca de filtro empilha título repetido.
+    if (!acumular) {
+        document.getElementById('categoriaUnicaTitulo')?.remove();
+    }
 
     if (produtos.length === 0) {
         container.classList.remove('products-sections');
@@ -571,6 +1076,18 @@ function renderizarProdutos(acumular = false) {
 
     if (!acumular) {
         container.innerHTML = '';
+
+        // Categoria única selecionada (não "todos", sem busca): mostra o mesmo cabeçalho
+        // com ícone + nome que já aparece na visão agrupada — antes só aparecia em "Todos",
+        // o que deixava confuso qual categoria estava sendo exibida.
+        const semBusca = normalizarTexto(termoBusca) === '';
+        if (filtroAtivo !== 'todos' && semBusca) {
+            const titulo = document.createElement('h4');
+            titulo.id = 'categoriaUnicaTitulo';
+            titulo.className = 'category-section-title';
+            titulo.innerHTML = `<span class="category-section-icon">${getIconeCategoria(filtroAtivo)}</span> ${NOMES_CATEGORIA[filtroAtivo] || capitalize(filtroAtivo)}`;
+            container.parentElement.insertBefore(titulo, container);
+        }
     }
 
     // Quando acumula (clique em "Carregar Mais"), só renderiza os itens NOVOS dessa página
@@ -631,6 +1148,7 @@ async function abrirModalProduto(produtoId) {
     }
 
     saboresSelecionados = [];
+    saborBaseAtual = null;
     adicionaisSelecionados = [];
     renderizarOpcoesProduto();
 
@@ -649,35 +1167,75 @@ function renderizarOpcoesProduto() {
 
     const ehPizza = produtoSelecionado.categoria === 'pizza' && configLoja.saboresPizza.length > 0;
     const ehSanduiche = produtoSelecionado.categoria === 'burgers' && configLoja.adicionaisSanduiche.length > 0;
+    const ehBebida = produtoSelecionado.categoria === 'bebidas';
 
     saboresGroup.style.display = ehPizza ? 'block' : 'none';
     adicionaisGroup.style.display = ehSanduiche ? 'block' : 'none';
 
+    // Bebida vem pronta de fábrica (lata, garrafa) — não faz sentido pedir "sem cebola,
+    // sem molho" pra uma Coca-Cola. Esconde o campo só nesse caso, sem remover do DOM
+    // (mantém o resto do fluxo de adicionarAoCarrinho() funcionando igual, só que sempre
+    // com observações vazias).
+    const observacoesEl = document.getElementById('observacoes');
+    if (observacoesEl) {
+        observacoesEl.style.display = ehBebida ? 'none' : 'block';
+        if (ehBebida) observacoesEl.value = '';
+    }
+
     if (ehPizza) {
-        configLoja.saboresPizza.forEach(sabor => {
-            const label = document.createElement('label');
-            label.className = 'option-item';
-            label.innerHTML = `
-                <input type="checkbox" value="${sabor.nome}">
-                <span>${sabor.nome}</span>
+        // SEMPRE garante um sabor "de origem" travado, mesmo que o nome do produto não
+        // coincida com nenhum sabor cadastrado na lista global (ver obterSaborBaseDoProduto).
+        saborBaseAtual = obterSaborBaseDoProduto(produtoSelecionado, configLoja.saboresPizza);
+        if (saborBaseAtual && saboresSelecionados.length === 0) {
+            saboresSelecionados = [saborBaseAtual.nome];
+        }
+
+        // Se o sabor original foi SINTETIZADO (não existe na lista cadastrada — ex: "Bacon"
+        // nunca foi cadastrado como sabor separado), ele não vai aparecer no forEach abaixo,
+        // então cria essa linha travada manualmente, antes dos sabores de verdade.
+        if (saborBaseAtual?.avulso) {
+            const linhaBase = document.createElement('label');
+            linhaBase.className = 'option-item sabor-base';
+            linhaBase.innerHTML = `
+                <input type="checkbox" value="${saborBaseAtual.nome}" checked disabled>
+                <span>${saborBaseAtual.nome}</span>
+                <span class="option-price" style="color:#999; font-size:12px;">sabor original</span>
             `;
-            const checkbox = label.querySelector('input');
-            checkbox.addEventListener('change', () => {
-                if (checkbox.checked) {
-                    if (saboresSelecionados.length >= 2) {
-                        checkbox.checked = false;
-                        showToast('Você pode escolher no máximo 2 sabores', 'error');
-                        return;
+            saboresList.appendChild(linhaBase);
+        }
+
+        configLoja.saboresPizza.forEach(sabor => {
+            const ehSaborBase = saborBaseAtual && !saborBaseAtual.avulso && sabor.nome === saborBaseAtual.nome;
+            const jaSelecionado = saboresSelecionados.includes(sabor.nome);
+
+            const label = document.createElement('label');
+            label.className = 'option-item' + (ehSaborBase ? ' sabor-base' : '');
+            label.innerHTML = `
+                <input type="checkbox" value="${sabor.nome}" ${jaSelecionado ? 'checked' : ''} ${ehSaborBase ? 'disabled' : ''}>
+                <span>${sabor.nome}</span>
+                ${ehSaborBase ? '<span class="option-price" style="color:#999; font-size:12px;">sabor original</span>' : ''}
+            `;
+
+            if (!ehSaborBase) {
+                const checkbox = label.querySelector('input');
+                checkbox.addEventListener('change', () => {
+                    if (checkbox.checked) {
+                        if (saboresSelecionados.length >= 2) {
+                            checkbox.checked = false;
+                            showToast('Você pode combinar no máximo mais 1 sabor', 'error');
+                            return;
+                        }
+                        saboresSelecionados.push(sabor.nome);
+                    } else {
+                        saboresSelecionados = saboresSelecionados.filter(s => s !== sabor.nome);
                     }
-                    saboresSelecionados.push(sabor.nome);
-                } else {
-                    saboresSelecionados = saboresSelecionados.filter(s => s !== sabor.nome);
-                }
-                atualizarEstadoCheckboxesSabores();
-                atualizarTotalItemModal();
-            });
+                    atualizarEstadoCheckboxesSabores();
+                    atualizarTotalItemModal();
+                });
+            }
             saboresList.appendChild(label);
         });
+        atualizarEstadoCheckboxesSabores();
     }
 
     if (ehSanduiche) {
@@ -705,10 +1263,54 @@ function renderizarOpcoesProduto() {
     atualizarTotalItemModal();
 }
 
-// Desabilita visualmente os sabores não marcados quando o limite de 2 já foi atingido
+// Tenta casar o nome do produto (ex: "Pizza Calabresa") com um sabor cadastrado (ex:
+// "Calabresa"), ignorando acento/caixa e o prefixo "Pizza". Se não achar (nome do produto
+// não bate com nada da lista de sabores), devolve null — nesse caso o sistema cai no
+// comportamento antigo: cliente escolhe livremente até 2 sabores, nenhum vem travado.
+// Tenta casar o nome do produto (ex: "Pizza Calabresa") com um sabor JÁ CADASTRADO na
+// lista global de sabores (ex: "Calabresa"). Isso é só pra reaproveitar o mesmo texto/
+// visual quando existe — NÃO é obrigatório pro sabor original funcionar (ver
+// obterSaborBaseDoProduto abaixo, que sempre garante um sabor mesmo sem essa coincidência).
+function encontrarSaborBaseDoProduto(produto, saboresPizza) {
+    if (!produto || !Array.isArray(saboresPizza)) return null;
+    const normalizar = (texto) => (texto || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/^pizza\s+/, '')
+        .trim();
+    const nomeProdutoNormalizado = normalizar(produto.nome);
+    return saboresPizza.find(s => normalizar(s.nome) === nomeProdutoNormalizado) || null;
+}
+
+// Tira o prefixo "Pizza " (com essa grafia ou variações de caixa) do nome do produto,
+// preservando a caixa do resto — "Pizza Bacon" -> "Bacon", "PIZZA quatro queijos" ->
+// "quatro queijos". Usado só quando não existe sabor cadastrado com o mesmo nome.
+function nomeSemPrefixoPizza(nome) {
+    return (nome || '').replace(/^pizza\s+/i, '').trim();
+}
+
+// SEMPRE devolve um sabor original pra travar no modal — nunca null. Prioridade:
+// 1) um sabor com esse nome já cadastrado na lista global (reaproveita o mesmo objeto);
+// 2) se não existir (ex: "Bacon" não está cadastrado como sabor, só como nome de pizza),
+//    sintetiza um sabor "avulso" a partir do próprio nome do produto. Isso garante que
+//    TODA pizza trave o sabor original, independente de coincidir com a lista do admin —
+//    antes disso, "Pizza Bacon" ficava sem nenhum sabor travado só porque "Bacon" nunca
+//    tinha sido cadastrado separadamente como sabor.
+function obterSaborBaseDoProduto(produto, saboresPizza) {
+    const encontrado = encontrarSaborBaseDoProduto(produto, saboresPizza);
+    if (encontrado) return encontrado;
+
+    const nome = nomeSemPrefixoPizza(produto?.nome);
+    return nome ? { nome, avulso: true } : null;
+}
+
+// Desabilita visualmente os sabores não marcados quando o limite de 2 já foi atingido.
+// O sabor original (.sabor-base) nunca passa por aqui — ele fica sempre marcado e
+// desabilitado desde que foi criado, então não faz sentido essa função mexer nele.
 function atualizarEstadoCheckboxesSabores() {
     const items = document.querySelectorAll('#saboresOptionsList .option-item');
     items.forEach(item => {
+        if (item.classList.contains('sabor-base')) return;
         const checkbox = item.querySelector('input');
         const limiteAtingido = saboresSelecionados.length >= 2;
         if (!checkbox.checked && limiteAtingido) {
@@ -746,7 +1348,10 @@ function adicionarAoCarrinho() {
         return;
     }
 
-    if (produtoSelecionado.categoria === 'pizza' && configLoja.saboresPizza.length > 0 && saboresSelecionados.length === 0) {
+    // Só exige escolha manual de sabor no caso raro em que o nome do produto não bate com
+    // nenhum sabor cadastrado (saborBaseAtual null) — normalmente o sabor original já vem
+    // incluso automaticamente, e o segundo sabor é sempre opcional.
+    if (produtoSelecionado.categoria === 'pizza' && configLoja.saboresPizza.length > 0 && !saborBaseAtual && saboresSelecionados.length === 0) {
         showToast('Escolha pelo menos 1 sabor', 'error');
         return;
     }
@@ -804,6 +1409,34 @@ function removerDoCarrinho(index) {
     showToast('Item removido do carrinho', 'success');
 }
 
+// Stepper +/- do item no carrinho. Ao chegar em 0, remove o item (mesmo comportamento
+// do botão de lixeira). Respeita o mesmo limite de estoque usado em adicionarAoCarrinho.
+function alterarQuantidadeCarrinho(index, delta) {
+    const item = carrinho[index];
+    if (!item) return;
+
+    const novaQuantidade = item.quantidade + delta;
+    if (novaQuantidade < 1) {
+        removerDoCarrinho(index);
+        return;
+    }
+
+    if (delta > 0) {
+        const produtoOriginal = allProdutos.find(p => p.id === item.id);
+        if (produtoOriginal && produtoOriginal.controlaEstoque !== false) {
+            const disponivel = produtoOriginal.estoque || 0;
+            if (novaQuantidade > disponivel) {
+                showToast(`Só temos mais ${disponivel} unidade(s) disponível(is) desse produto`, 'error');
+                return;
+            }
+        }
+    }
+
+    item.quantidade = novaQuantidade;
+    salvarCarrinho();
+    atualizarCarrinho();
+}
+
 // O carrinho é só de memória — não persiste no localStorage de propósito, pra sempre
 // começar vazio em cada nova visita/sessão (recarregar a página zera o carrinho).
 function salvarCarrinho() {
@@ -825,10 +1458,23 @@ function atualizarCarrinho() {
     const footerEl = document.getElementById('cartFooter');
 
     countEl.textContent = carrinho.length;
+    const bottomCountEl = document.getElementById('bottomNavCartCount');
+    if (bottomCountEl) bottomCountEl.textContent = carrinho.length;
     clearBtn.style.display = carrinho.length > 0 ? 'inline' : 'none';
 
     if (carrinho.length === 0) {
-        container.innerHTML = '<p class="empty-cart">Seu carrinho está vazio</p>';
+        container.innerHTML = `
+            <div class="empty-cart-state">
+                <img class="empty-cart-illustration" src="carrinho-vazio.png" alt="Seu carrinho está vazio"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <p class="empty-cart-fallback-title" style="display:none;">Seu carrinho está vazio</p>
+                <button type="button" class="empty-cart-cta" id="emptyCartVerCardapioBtn">Ver cardápio</button>
+            </div>
+        `;
+        document.getElementById('emptyCartVerCardapioBtn')?.addEventListener('click', () => {
+            document.getElementById('cartSidebar').classList.remove('active');
+            document.getElementById('overlay').classList.remove('active');
+        });
         summaryEl.style.display = 'none';
         checkoutEl.style.display = 'none';
         footerEl.style.display = 'none';
@@ -862,17 +1508,46 @@ function atualizarCarrinho() {
                 ${item.observacoes ? `<small style="color: #999;">📝 ${item.observacoes}</small>` : ''}
                 <div class="cart-item-price">R$ ${itemTotal.toFixed(2)}</div>
             </div>
-            <button class="cart-item-remove" onclick="removerDoCarrinho(${index})">🗑️</button>
+            <div class="cart-item-actions">
+                <div class="cart-item-stepper">
+                    <button type="button" class="stepper-btn stepper-minus" onclick="alterarQuantidadeCarrinho(${index}, -1)" aria-label="Diminuir quantidade">−</button>
+                    <span class="stepper-value">${item.quantidade}</span>
+                    <button type="button" class="stepper-btn stepper-plus" onclick="alterarQuantidadeCarrinho(${index}, 1)" aria-label="Aumentar quantidade">+</button>
+                </div>
+                <button class="cart-item-remove" onclick="removerDoCarrinho(${index})" aria-label="Remover item">🗑️</button>
+            </div>
         `;
         container.appendChild(itemEl);
     });
 
     // Atualizar resumo (taxa só se for delivery; retirada é grátis)
     const taxaEntrega = obterTaxaEntregaSelecionada();
-    const total = subtotal + taxaEntrega;
+    const economiaCupom = calcularEconomiaCupom();
+    const total = Math.max(0, subtotal + taxaEntrega - economiaCupom);
 
     document.getElementById('subtotalPrice').textContent = `R$ ${subtotal.toFixed(2)}`;
     document.getElementById('deliveryPrice').textContent = taxaEntrega > 0 ? `R$ ${taxaEntrega.toFixed(2)}` : 'Grátis';
+
+    const cupomDescontoRow = document.getElementById('cupomDescontoRow');
+    if (cupomDescontoRow) {
+        if (cupomAplicado && economiaCupom > 0) {
+            cupomDescontoRow.style.display = 'flex';
+            document.getElementById('cupomDescontoValor').textContent = economiaCupom.toFixed(2);
+        } else {
+            cupomDescontoRow.style.display = 'none';
+        }
+    }
+
+    // Mantém o "você economiza R$ X" do card de cupom aplicado em sincronia com o
+    // carrinho. Esse card só é preenchido em atualizarExibicaoCupom(), chamada apenas
+    // quando o cupom é aplicado/removido — se o carrinho mudar depois disso (item
+    // adicionado/removido), o card ficava com o valor antigo (ex: R$ 0.00, calculado
+    // quando o cupom de fidelidade foi aplicado com o carrinho ainda vazio no load).
+    if (cupomAplicado) {
+        const economiaBadgeEl = document.getElementById('cuponAplicadoEconomia');
+        if (economiaBadgeEl) economiaBadgeEl.textContent = economiaCupom.toFixed(2);
+    }
+
     document.getElementById('totalPrice').textContent = `R$ ${total.toFixed(2)}`;
 
     summaryEl.style.display = 'block';
@@ -904,6 +1579,13 @@ function obterTaxaEntregaSelecionada() {
     const tipoEntrega = radioSelecionado ? radioSelecionado.value : 'retirada';
     if (tipoEntrega !== 'delivery') return 0;
 
+    // Cálculo automático por km tem prioridade quando está ativo e deu certo pra esse
+    // endereço. Se falhou (endereço não encontrado, fora da área, etc.), cai pro bairro
+    // manual abaixo normalmente — freteAutoResultado fica null nesses casos.
+    if (configLoja.calculoPorKm?.ativo && freteAutoResultado?.taxa != null) {
+        return freteAutoResultado.taxa;
+    }
+
     const bairroSelect = document.getElementById('clientBairro');
     const opcaoSelecionada = bairroSelect?.selectedOptions?.[0];
 
@@ -922,11 +1604,6 @@ function filtrarPorCategoria(categoria) {
     // Atualizar cards de categoria (marca o clicado como ativo)
     document.querySelectorAll('.category-card').forEach(card => {
         card.classList.toggle('active', card.dataset.category === categoria);
-    });
-
-    // Atualizar botões de filtro
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.filter === categoria);
     });
 
     aplicarFiltrosCombinados();
@@ -987,6 +1664,24 @@ document.getElementById('floatingCartBar')?.addEventListener('click', () => {
     document.getElementById('overlay').classList.add('active');
 });
 
+document.getElementById('bottomNavCartBtn')?.addEventListener('click', () => {
+    document.getElementById('cartSidebar').classList.add('active');
+    document.getElementById('overlay').classList.add('active');
+});
+
+// Marca visualmente qual item da barra inferior está ativo (só estética — cada link já
+// navega normalmente pelo href/scroll, isso só resolve o destaque de qual está selecionado).
+document.querySelectorAll('.bottom-nav-item[href], .bottom-nav-item[data-scroll-top]').forEach(item => {
+    item.addEventListener('click', (e) => {
+        if (item.hasAttribute('data-scroll-top')) {
+            e.preventDefault();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        document.querySelectorAll('.bottom-nav-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+    });
+});
+
 document.getElementById('closeCart').addEventListener('click', () => {
     document.getElementById('cartSidebar').classList.remove('active');
     document.getElementById('overlay').classList.remove('active');
@@ -1033,6 +1728,23 @@ document.addEventListener('change', (e) => {
     }
 });
 
+// Campo de endereço: dispara a prévia de sugestões (debounce curto) e o cálculo automático
+// de frete por km como fallback (debounce mais longo, caso o cliente não clique em nenhuma
+// sugestão e mande o texto puro). Não faz nada se calculoPorKm estiver desativado no admin.
+document.getElementById('clientAddress').addEventListener('input', () => {
+    freteAutoResultado = null; // texto mudou — invalida qualquer sugestão selecionada antes
+    agendarBuscaSugestoesEndereco();
+    agendarCalculoFreteAutomatico();
+});
+document.getElementById('clientAddress').addEventListener('keydown', navegarSugestoesEndereco);
+document.getElementById('clientAddress').addEventListener('focus', agendarBuscaSugestoesEndereco);
+
+// Fecha a lista de sugestões ao clicar fora do campo/dropdown.
+document.addEventListener('click', (e) => {
+    const wrap = document.querySelector('.endereco-sugestoes-wrap');
+    if (wrap && !wrap.contains(e.target)) esconderSugestoesEndereco();
+});
+
 // ========== FORMA DE PAGAMENTO ==========
 document.getElementById('paymentMethodsGrid').addEventListener('change', (e) => {
     if (e.target.name !== 'paymentMethod') return;
@@ -1072,6 +1784,7 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
     const endereco = enderecoInput.value.trim();
     const bairro = tipoEntrega === 'delivery' ? bairroSelect.value : '';
     const observacoes = document.getElementById('orderObservations').value.trim();
+    const aceitaPromocao = document.getElementById('aceitaPromocaoInput')?.checked === true;
 
     const metodoPagamentoInput = document.querySelector('input[name="paymentMethod"]:checked');
     const formaPagamento = metodoPagamentoInput ? metodoPagamentoInput.value : '';
@@ -1097,7 +1810,12 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
         return;
     }
 
-    if (tipoEntrega === 'delivery' && !bairro) {
+    // Bairro só é obrigatório quando o cálculo automático por km NÃO resolveu o frete —
+    // nesses casos o select de bairro fica visível como fallback. Se o cálculo automático
+    // já achou uma taxa válida, o select fica escondido e não deve bloquear o checkout.
+    const usandoFreteAutomatico = configLoja.calculoPorKm?.ativo && freteAutoResultado?.taxa != null;
+
+    if (tipoEntrega === 'delivery' && !bairro && !usandoFreteAutomatico) {
         bairroSelect.classList.add('input-error');
         showToast('Selecione o bairro de entrega!', 'error');
         bairroSelect.focus();
@@ -1136,6 +1854,11 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
     const codigoPedido = gerarCodigoPedido();
     const taxaEntregaPedido = tipoEntrega === 'delivery' ? obterTaxaEntregaSelecionada() : 0;
 
+    // Loja com cobrança automática ativada + forma de pagamento que passa pelo gateway
+    // (dinheiro na entrega nunca usa isso) → o pedido nasce "aguardando_pagamento" e só
+    // libera pra cozinha/painel depois que o webhook do PagBank confirmar (ver mais abaixo).
+    const usaPagamentoOnline = formaPagamento !== 'dinheiro' && configLoja.configuracoes?.pagamentoOnline?.ativo === true;
+
     // Salvar pedido no Firebase PRIMEIRO — precisamos do ID gerado pelo Firestore pra
     // montar o link de rastreamento antes de montar a mensagem do WhatsApp.
     const pedidoSalvo = await salvarPedidoFirebase({
@@ -1144,35 +1867,105 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
         telefone,
         tipoEntrega,
         endereco,
-        bairro,
+        bairro: bairro || freteAutoResultado?.bairro || '',
         observacoes,
         itens: carrinho,
         total: calcularTotal(tipoEntrega),
         taxaEntrega: taxaEntregaPedido,
         formaPagamento,
-        trocoPara: trocoPara || null
+        trocoPara: trocoPara || null,
+        status: usaPagamentoOnline ? 'aguardando_pagamento' : 'pendente',
+        cupom: cupomAplicado ? {
+            id: cupomAplicado.id,
+            codigo: cupomAplicado.codigo,
+            desconto: cupomAplicado.desconto,
+            economia: calcularEconomiaCupom()
+        } : null
     });
 
     const linkRastreio = pedidoSalvo
-        ? `${window.location.origin}${window.location.pathname.replace(/index\.html$/, '')}rastreio.html?id=${pedidoSalvo.id}`
+        ? `${window.location.origin}${window.location.pathname.replace(/index\.html$/, '')}rastreio.html?loja=${obterLojaAtual()}&id=${pedidoSalvo.id}`
         : null;
 
-    // Gerar mensagem WhatsApp
+    if (pedidoSalvo) salvarDadosClienteLocal(nome, telefone);
+
+    // Cadastra/atualiza o cliente (nome, telefone, endereço, histórico de compras) —
+    // nunca trava o pedido se der erro, é um "extra" em cima da venda que já foi salva.
+    if (pedidoSalvo) {
+        try {
+            await upsertCliente({
+                nome, telefone,
+                endereco: tipoEntrega === 'delivery' ? endereco : '',
+                bairro: tipoEntrega === 'delivery' ? (bairro || freteAutoResultado?.bairro || '') : '',
+                total: calcularTotal(tipoEntrega),
+                aceitaPromocao
+            });
+        } catch (error) {
+            console.error('Erro ao salvar cadastro do cliente:', error);
+        }
+    }
+
+    // Cupom usado com sucesso: soma no contador de usos (não trava o pedido se falhar).
+    // Se foi desconto de fidelidade (sem id de cupom de verdade), marca a recompensa como
+    // usada em vez disso — outro fluxo, mesmo espírito.
+    if (pedidoSalvo && cupomAplicado) {
+        try {
+            if (cupomAplicado.ehFidelidade) {
+                await resgatarRecompensaFidelidade(cupomAplicado.telefoneId);
+            } else {
+                await incrementarUsoCupom(cupomAplicado.id);
+            }
+        } catch (error) {
+            console.error('Erro ao registrar uso do cupom/fidelidade:', error);
+        }
+    }
+
+    const dadosParaWhatsApp = { nome, telefone, tipoEntrega, endereco, bairro, observacoes, codigoPedido, linkRastreio, formaPagamento, trocoPara };
+
+    // Loja com cobrança automática ativada + forma de pagamento que passa pelo gateway
+    // (dinheiro na entrega nunca usa isso, óbvio) → não manda pro WhatsApp ainda. Primeiro
+    // o cliente paga numa aba do PagBank, só DEPOIS que o pagamento for confirmado
+    // (webhook -> Firestore -> observarPagamentoPedido abaixo) que o pedido é liberado.
+    if (usaPagamentoOnline && pedidoSalvo) {
+        try {
+            const { url } = await iniciarPagamentoOnline(obterLojaAtual(), pedidoSalvo.id, window.location.href);
+            window.open(url, '_blank');
+            iniciarEsperaPagamento(pedidoSalvo.id, url, dadosParaWhatsApp);
+        } catch (error) {
+            console.error('Erro ao iniciar pagamento online:', error);
+            showToast('Não foi possível abrir o pagamento agora. Tente de novo ou escolha "Dinheiro".', 'error');
+        }
+        return;
+    }
+
+    finalizarEnvioWhatsApp(dadosParaWhatsApp);
+});
+
+// Monta a mensagem, abre o WhatsApp e limpa o carrinho — usado tanto pelo fluxo de sempre
+// (forma de pagamento sem gateway) quanto pelo fluxo de pagamento online, DEPOIS que o
+// pagamento é confirmado (ver iniciarEsperaPagamento).
+function finalizarEnvioWhatsApp(dados) {
+    const { nome, telefone, tipoEntrega, endereco, bairro, observacoes, codigoPedido, linkRastreio, formaPagamento, trocoPara } = dados;
+
     const mensagem = gerarMensagemWhatsApp(nome, telefone, tipoEntrega, endereco, bairro, observacoes, codigoPedido, linkRastreio, formaPagamento, trocoPara);
 
-    // Enviar para WhatsApp (usa o número configurado no painel admin)
     const numeroWhatsApp = apenasNumeros(configLoja.telefone) || WHATSAPP_NUMBER_PADRAO;
     const urlWhatsApp = `https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(mensagem)}`;
     window.open(urlWhatsApp, '_blank');
 
-    // Limpar carrinho
+    // Limpar carrinho (nome e telefone ficam preenchidos de propósito — foram
+    // salvos acima pra não precisar redigitar no próximo pedido)
     carrinho = [];
     salvarCarrinho();
+    cupomAplicado = null;
+    document.getElementById('fidelidadeBanner').style.display = 'none';
+    atualizarExibicaoCupom();
     atualizarCarrinho();
-    document.getElementById('clientName').value = '';
-    document.getElementById('clientPhone').value = '';
     document.getElementById('clientAddress').value = '';
     document.getElementById('clientBairro').value = '';
+    freteAutoResultado = null;
+    mostrarStatusFreteAuto('', null);
+    exibirSelectBairroComoFallback(false);
     document.getElementById('orderObservations').value = '';
     document.querySelectorAll('input[name="paymentMethod"]').forEach(r => r.checked = false);
     document.querySelectorAll('.payment-method-option').forEach(opt => opt.classList.remove('selected'));
@@ -1187,7 +1980,46 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
     } else {
         showToast('Pedido enviado para WhatsApp!', 'success');
     }
-});
+}
+
+// ========== PAGAMENTO ONLINE — TELA DE ESPERA ==========
+// Troca o formulário de checkout por uma tela de "aguardando pagamento" e fica ouvindo o
+// pedido em tempo real (Firestore onSnapshot) esperando o webhook do PagBank confirmar.
+let pararDeObservarPagamento = null;
+
+function iniciarEsperaPagamento(pedidoId, urlPagamento, dadosParaWhatsApp) {
+    document.getElementById('checkoutSection').style.display = 'none';
+    document.getElementById('cartFooter').style.display = 'none';
+    const wait = document.getElementById('pagamentoOnlineWait');
+    wait.style.display = 'flex';
+    document.getElementById('pagamentoOnlineReabrirLink').href = urlPagamento;
+
+    if (pararDeObservarPagamento) pararDeObservarPagamento();
+    pararDeObservarPagamento = observarPagamentoPedido(obterLojaAtual(), pedidoId, (pedido) => {
+        const status = pedido.pagamentoOnline?.status;
+        if (status === 'pago') {
+            encerrarEsperaPagamento();
+            finalizarEnvioWhatsApp(dadosParaWhatsApp);
+        } else if (status === 'recusado') {
+            document.getElementById('pagamentoOnlineTitulo').textContent = 'Pagamento não foi aprovado 😕';
+            document.getElementById('pagamentoOnlineSub').textContent = 'Tente novamente com outro cartão/Pix, ou reabra a página de pagamento acima.';
+        }
+    });
+
+    document.getElementById('pagamentoOnlineCancelarBtn').onclick = () => {
+        encerrarEsperaPagamento();
+        updatePedidoStatus(pedidoId, 'cancelado').catch(err => console.error('Erro ao cancelar pedido não pago:', err));
+    };
+}
+
+function encerrarEsperaPagamento() {
+    if (pararDeObservarPagamento) { pararDeObservarPagamento(); pararDeObservarPagamento = null; }
+    document.getElementById('pagamentoOnlineWait').style.display = 'none';
+    document.getElementById('pagamentoOnlineTitulo').textContent = 'Aguardando confirmação do pagamento...';
+    document.getElementById('pagamentoOnlineSub').textContent = 'Finalize o pagamento na aba que abrimos. Assim que confirmar, seu pedido segue automaticamente pra loja.';
+    document.getElementById('checkoutSection').style.display = '';
+    document.getElementById('cartFooter').style.display = '';
+}
 
 // Confere no Firestore (dado mais atual que o carrinho local) se ainda há estoque suficiente
 // pra cada produto do carrinho antes de fechar o pedido. Evita vender o mesmo último item pra
@@ -1238,15 +2070,25 @@ function gerarMensagemWhatsApp(nome, telefone, tipoEntrega, endereco, bairro, ob
     });
 
     const taxaEntrega = obterTaxaEntregaSelecionada();
+    const subtotal = carrinho.reduce((soma, item) => soma + (item.preco * item.quantidade), 0);
+    const economiaCupom = calcularEconomiaCupom();
     const total = calcularTotal(tipoEntrega);
-    const subtotal = total - taxaEntrega;
     mensagem += `\n*💰 Resumo:*\n`;
     mensagem += `Subtotal: R$ ${subtotal.toFixed(2)}\n`;
     mensagem += `Entrega: ${taxaEntrega > 0 ? `R$ ${taxaEntrega.toFixed(2)}` : 'Grátis'}\n`;
+    if (cupomAplicado && economiaCupom > 0) {
+        mensagem += `*🎟️ Cupom Aplicado:* ${cupomAplicado.codigo} (-${cupomAplicado.desconto}%)\n`;
+        mensagem += `Desconto: -R$ ${economiaCupom.toFixed(2)}\n`;
+    }
     mensagem += `*Total: R$ ${total.toFixed(2)}*\n\n`;
 
     if (tipoEntrega === 'delivery') {
-        mensagem += `*📍 Entrega:* Delivery — Bairro: ${bairro}, ${endereco}\n`;
+        // Se o cliente não escolheu bairro no select (fluxo automático), usa o bairro que
+        // o geocoding identificou — só omite o rótulo se nem isso existir.
+        const bairroExibicao = bairro || freteAutoResultado?.bairro || '';
+        mensagem += bairroExibicao
+            ? `*📍 Entrega:* Delivery — Bairro: ${bairroExibicao}, ${endereco}\n`
+            : `*📍 Entrega:* Delivery — ${endereco}\n`;
     } else {
         mensagem += `*📍 Entrega:* Retirada na loja\n`;
     }
@@ -1293,10 +2135,24 @@ function mostrarConfirmacaoComRastreio(linkRastreio) {
     setTimeout(() => toast.classList.remove('show'), 8000);
 }
 
-function calcularTotal(tipoEntrega) {
+// Total do carrinho SEM o desconto de cupom (usado pra validar o cupom e como base pro cálculo do desconto)
+function calcularTotalSemCupom(tipoEntrega) {
     const subtotal = carrinho.reduce((total, item) => total + (item.preco * item.quantidade), 0);
     const taxaEntrega = obterTaxaEntregaSelecionada();
     return subtotal + taxaEntrega;
+}
+
+// Economia (em R$) do cupom aplicado, recalculada sempre em cima do valor atual do carrinho
+function calcularEconomiaCupom() {
+    if (!cupomAplicado) return 0;
+    const base = calcularTotalSemCupom();
+    return (base * cupomAplicado.desconto) / 100;
+}
+
+function calcularTotal(tipoEntrega) {
+    const base = calcularTotalSemCupom(tipoEntrega);
+    const economia = calcularEconomiaCupom();
+    return Math.max(0, base - economia); // não deixa o total ficar negativo
 }
 
 // ========== MODALS ==========
@@ -1333,10 +2189,6 @@ document.getElementById('increaseQty').addEventListener('click', () => {
 
 document.getElementById('addToCartBtn').addEventListener('click', adicionarAoCarrinho);
 
-// ========== BOTÕES ==========
-document.getElementById('scrollMenuBtn').addEventListener('click', () => {
-    document.getElementById('produtos').scrollIntoView({ behavior: 'smooth' });
-});
 
 document.getElementById('loadMoreBtn').addEventListener('click', () => {
     currentPage++;
@@ -1346,6 +2198,53 @@ document.getElementById('loadMoreBtn').addEventListener('click', () => {
 // ========== INICIALIZAR EVENTOS ==========
 function inicializarEventos() {
     // Eventos já foram inicializados acima
+
+    document.getElementById('aplicarCuponBtn')?.addEventListener('click', validarEAplicarCupom);
+    document.getElementById('removerCuponBtn')?.addEventListener('click', removerCupom);
+    document.getElementById('cuponInput')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') validarEAplicarCupom();
+    });
+    document.getElementById('clientPhone')?.addEventListener('blur', checarRecompensaFidelidade);
+}
+
+// ========== FIDELIDADE (desconto automático) ==========
+// Assim que o cliente termina de digitar o telefone, checa se ele tem uma recompensa de
+// fidelidade disponível (10 pedidos, por exemplo) e aplica o desconto sozinho — sem
+// precisar digitar cupom nenhum. Reaproveita a mesma variável/exibição do cupom manual
+// (cupomAplicado) pra não duplicar toda a lógica de cálculo de total já existente.
+async function checarRecompensaFidelidade() {
+    const banner = document.getElementById('fidelidadeBanner');
+    const telefone = document.getElementById('clientPhone').value.trim();
+    if (apenasNumeros(telefone).length < 10) return;
+
+    // Se já tem um cupom digitado manualmente, não sobrescreve — o cliente escolheu esse.
+    if (cupomAplicado && !cupomAplicado.ehFidelidade) return;
+
+    try {
+        const recompensa = await consultarRecompensaFidelidade(telefone);
+        if (recompensa) {
+            cupomAplicado = {
+                id: null,
+                codigo: `FIDELIDADE ${recompensa.desconto}%`,
+                desconto: recompensa.desconto,
+                ehFidelidade: true,
+                telefoneId: recompensa.telefoneId
+            };
+            banner.style.display = 'flex';
+            banner.textContent = `🎉 Você ganhou ${recompensa.desconto}% de desconto de fidelidade — já aplicado no seu pedido!`;
+            atualizarExibicaoCupom();
+            atualizarCarrinho();
+        } else if (cupomAplicado?.ehFidelidade) {
+            // Telefone mudou e não bate mais com nenhuma recompensa — desfaz o desconto
+            // automático (não mexe se o cliente aplicou cupom manual por cima).
+            cupomAplicado = null;
+            banner.style.display = 'none';
+            atualizarExibicaoCupom();
+            atualizarCarrinho();
+        }
+    } catch (error) {
+        console.error('Erro ao checar recompensa de fidelidade:', error);
+    }
 }
 
 // ========== UTILITÁRIOS ==========
@@ -1386,4 +2285,87 @@ function showToast(message, type = 'info') {
     setTimeout(() => {
         toast.classList.remove('show');
     }, 3000);
+}
+
+// ========== CUPONS NO APP ==========
+
+// ========== VALIDAR E APLICAR CUPOM ==========
+async function validarEAplicarCupom() {
+    const cuponInput = document.getElementById('cuponInput');
+    const btn = document.getElementById('aplicarCuponBtn');
+    if (!cuponInput) return;
+
+    const codigo = cuponInput.value.trim();
+
+    if (!codigo) {
+        showToast('Digite o código do cupom', 'error');
+        return;
+    }
+
+    // Calcular valor do carrinho ANTES de aplicar cupom
+    const tipoEntrega = document.querySelector('input[name="delivery"]:checked')?.value || 'retirada';
+    const valorCarrinho = calcularTotalSemCupom(tipoEntrega);
+
+    // Feedback visual enquanto valida (a validação é assíncrona e pode levar um instante) —
+    // evita o usuário clicar de novo achando que não funcionou.
+    const textoOriginalBtn = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Aplicando...'; }
+
+    try {
+        const resultado = await validarCupom(codigo, valorCarrinho);
+
+        if (!resultado.valido) {
+            showToast(resultado.erro || 'Cupom inválido', 'error');
+            return;
+        }
+
+        const cupom = resultado.cupom;
+
+        cupomAplicado = {
+            id: cupom.id,
+            codigo: cupom.codigo,
+            desconto: cupom.desconto
+        };
+
+        showToast(`Cupom "${cupom.codigo}" aplicado! Desconto de ${cupom.desconto}%`, 'success');
+
+        // Atualizar exibição
+        cuponInput.value = '';
+        atualizarExibicaoCupom();
+        atualizarCarrinho(); // Atualizar totais
+
+    } catch (error) {
+        console.error('Erro ao validar cupom:', error);
+        showToast('Erro ao validar cupom', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = textoOriginalBtn; }
+    }
+}
+
+// ========== REMOVER CUPOM ==========
+function removerCupom() {
+    cupomAplicado = null;
+    document.getElementById('fidelidadeBanner').style.display = 'none';
+    atualizarExibicaoCupom();
+    atualizarCarrinho(); // Atualizar totais
+    showToast('Cupom removido', 'info');
+}
+
+// ========== ATUALIZAR EXIBIÇÃO DE CUPOM ==========
+function atualizarExibicaoCupom() {
+    const cuponWrapper = document.getElementById('cuponAplicadoWrapper');
+    const cuponInputWrapper = document.getElementById('cuponInputWrapper');
+    if (!cuponWrapper) return;
+
+    if (cupomAplicado) {
+        const economia = calcularEconomiaCupom();
+        cuponWrapper.style.display = 'block';
+        document.getElementById('cuponAplicadoCodigo').textContent = cupomAplicado.codigo;
+        document.getElementById('cuponAplicadoDesconto').textContent = `${cupomAplicado.desconto}%`;
+        document.getElementById('cuponAplicadoEconomia').textContent = economia.toFixed(2);
+        if (cuponInputWrapper) cuponInputWrapper.style.display = 'none';
+    } else {
+        cuponWrapper.style.display = 'none';
+        if (cuponInputWrapper) cuponInputWrapper.style.display = 'block';
+    }
 }

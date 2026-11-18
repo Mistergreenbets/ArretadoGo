@@ -6,18 +6,57 @@ let abaAtiva = 'aberto'; // 'aberto' | 'rota' | 'concluidas'
 let idsAbertoAnteriores = new Set(); // pra detectar pedido novo e dar o "pulse"
 let minhaPosicaoAtual = null; // { lat, lng } — última posição conhecida do motoboy
 let watchIdPosicao = null;
+
+// Throttle da gravação de localização no Firestore: o watchPosition do navegador pode
+// disparar a cada poucos segundos, mas gravar TODA atualização no banco gera um volume
+// de escritas desnecessário (e caro) — o mapa do cliente não precisa de mais que isso pra
+// parecer fluido. Só grava de novo se já passou tempo suficiente OU se o motoboy andou uma
+// distância mínima desde a última gravação (o que vier primeiro).
+const LOCALIZACAO_INTERVALO_MIN_MS = 15000; // no máximo 1 gravação a cada 15s por pedido em rota
+const LOCALIZACAO_DISTANCIA_MIN_M = 30; // ou se andou pelo menos 30m desde a última gravação
+let ultimaGravacaoPorPedido = {}; // pedidoId -> { lat, lng, timestamp }
+
+// Distância aproximada em metros entre duas coordenadas (fórmula de Haversine)
+function distanciaMetros(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const toRad = (deg) => deg * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Decide se vale a pena gravar essa atualização de posição no Firestore pra um pedido
+// específico, ou se é cedo demais / o motoboy mal se moveu desde a última gravação.
+function deveGravarLocalizacao(pedidoId, lat, lng) {
+    const anterior = ultimaGravacaoPorPedido[pedidoId];
+    if (!anterior) return true; // primeira gravação desse pedido em rota, sempre grava
+
+    const agora = Date.now();
+    const tempoPassado = agora - anterior.timestamp;
+    if (tempoPassado < LOCALIZACAO_INTERVALO_MIN_MS) return false;
+
+    const distancia = distanciaMetros(anterior.lat, anterior.lng, lat, lng);
+    // Mesmo já tendo passado o intervalo mínimo, se o motoboy ficou parado (sinal de
+    // trânsito, entrega parada) não faz sentido regravar a mesma posição repetidamente —
+    // exige a distância mínima também.
+    return distancia >= LOCALIZACAO_DISTANCIA_MIN_M;
+}
 let mapaMini = null, marcadorMini = null;
 let mapaFull = null, marcadorFull = null;
 
-// Só pedidos delivery, que ainda não terminaram, aparecem pro motoboy
-const STATUS_ABERTO = ['pendente', 'preparando'];
+// Pedidos delivery que ainda não terminaram aparecem pro motoboy na aba "Aberto" — pendente
+// e preparando ficam visíveis só como informação (a cozinha ainda está trabalhando), sem
+// nenhuma ação disponível; a ação de retirar só libera quando o status vira 'pronto'
+// (ver montarCardEntrega), que é quando a cozinha confirma que o pedido pode ser buscado.
+const STATUS_ABERTO = ['pendente', 'preparando', 'pronto'];
 
 // ========== INICIALIZAR ==========
 document.addEventListener('DOMContentLoaded', async () => {
     inicializarLoginForm();
     inicializarAbas();
     inicializarMapaExpandir();
-    await carregarNomeLoja();
     await verificarAutenticacaoMotoboy();
 });
 
@@ -39,6 +78,18 @@ async function verificarAutenticacaoMotoboy() {
             mostrarTelaLogin();
             return;
         }
+
+        // Motoboy vive dentro de UMA loja, mas isso não dá pra saber sem antes achar
+        // o índice global uid -> lojaId (motoboys ficam em subcoleção, não dá pra
+        // consultar sem já saber a loja — daí esse passo extra antes de tudo).
+        const lojaId = await getMotoboyLojaId(user.uid);
+        if (!lojaId) {
+            await auth.signOut();
+            mostrarTelaLogin('Este acesso não está autorizado como motoboy, ou foi desativado.');
+            return;
+        }
+        definirLojaAtual(lojaId);
+        await carregarNomeLoja();
 
         const motoboy = await getMotoboyByUid(user.uid);
 
@@ -180,10 +231,7 @@ async function iniciarEscutaPedidos() {
     });
 }
 
-function paraData(timestamp) {
-    if (!timestamp) return null;
-    return typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
-}
+// paraData() agora vem de firebase-config.js (compartilhada com admin.js)
 
 // ========== RESUMO / KPIs / GANHOS / RANKING ==========
 function renderizarResumo() {
@@ -369,8 +417,8 @@ function renderizarHistorico() {
                         <span class="entrega-id">#${pedido.codigoPedido || pedido.id.substring(0, 8).toUpperCase()}</span>
                         <span class="entrega-status-badge">✅ ${horaTexto}</span>
                     </div>
-                    <div class="entrega-cliente">${pedido.nome}</div>
-                    <div class="entrega-endereco">${pedido.bairro ? `<strong>${pedido.bairro}</strong>` : ''} ${pedido.endereco || ''}</div>
+                    <div class="entrega-cliente">${escaparHtml(pedido.nome)}</div>
+                    <div class="entrega-endereco">${pedido.bairro ? `<strong>${escaparHtml(pedido.bairro)}</strong>` : ''} ${escaparHtml(pedido.endereco || '')}</div>
                     <div class="entrega-meta-row" style="border-bottom:none; margin-bottom:0;">
                         <span class="entrega-itens-resumo">Total do pedido: ${formatarMoeda(pedido.total)}</span>
                         <span class="entrega-taxa-motoboy" style="font-size:15px;">+${formatarMoeda(pedido.taxaEntrega)}</span>
@@ -389,13 +437,16 @@ function montarCardEntrega(pedido, ehNovo) {
 
     let itensResumo = '';
     if (Array.isArray(pedido.itens)) {
-        itensResumo = pedido.itens.map(item => `${item.quantidade}x ${item.nome}`).join(', ');
+        itensResumo = pedido.itens.map(item => `${item.quantidade}x ${escaparHtml(item.nome)}`).join(', ');
     }
 
     const enderecoCompleto = [pedido.endereco, pedido.bairro].filter(Boolean).join(' — ') || 'Endereço não informado';
+    const enderecoCompletoEscapado = escaparHtml(enderecoCompleto);
 
     let acoesHtml = '';
     if (status === 'pendente' || status === 'preparando') {
+        acoesHtml = `<div class="entrega-aguardando-cozinha" style="font-size:13px; color:#888; padding:6px 0;">👨‍🍳 Aguardando a cozinha finalizar o preparo</div>`;
+    } else if (status === 'pronto') {
         acoesHtml = `
             <button type="button" class="btn btn-primary btn-iniciar" data-id="${pedido.id}">🚗 Iniciar Entrega</button>
             <button type="button" class="btn btn-rota" data-rota="${pedido.id}" title="Ver rota no mapa">🧭</button>
@@ -413,10 +464,10 @@ function montarCardEntrega(pedido, ehNovo) {
                 <span class="entrega-id">#${pedido.codigoPedido || pedido.id.substring(0, 8).toUpperCase()}</span>
                 <span class="entrega-status-badge">${getLabelStatus(status)}</span>
             </div>
-            <div class="entrega-cliente">${pedido.nome}</div>
-            <div class="entrega-endereco">🛵 ${enderecoCompleto}${pedido.telefone ? ` · 📞 ${pedido.telefone}` : ''}</div>
+            <div class="entrega-cliente">${escaparHtml(pedido.nome)}</div>
+            <div class="entrega-endereco">🛵 ${enderecoCompletoEscapado}${pedido.telefone ? ` · 📞 ${escaparHtml(pedido.telefone)}` : ''}</div>
             <div class="entrega-meta-row">
-                <span class="entrega-itens-resumo">${itensResumo}${pedido.observacoes ? ` · 💬 ${pedido.observacoes}` : ''}</span>
+                <span class="entrega-itens-resumo">${itensResumo}${pedido.observacoes ? ` · 💬 ${escaparHtml(pedido.observacoes)}` : ''}</span>
                 <div>
                     <span class="entrega-valor-destaque">${formatarMoeda(pedido.total)}</span>
                     <span class="entrega-taxa-motoboy">+${formatarMoeda(pedido.taxaEntrega)} pra você</span>
@@ -464,22 +515,28 @@ function ligarAcoesCards(container, pedidos) {
 async function marcarStatus(pedido, novoStatus) {
     if (!['saiu_entrega', 'entregue'].includes(novoStatus)) return;
 
-    // Abre a aba do WhatsApp já no clique (evento do usuário), pra não ser bloqueada
-    const abaWhatsApp = window.open('', '_blank');
-
     try {
         const extra = novoStatus === 'saiu_entrega'
             ? { motoboyId: motoboyLogado.uid, motoboyNome: motoboyLogado.nome }
             : undefined;
 
-        await updatePedidoStatus(pedido.id, novoStatus, extra);
-        enviarAtualizacaoWhatsApp({ ...pedido, status: novoStatus }, novoStatus, abaWhatsApp);
-        showToast(novoStatus === 'entregue' ? '🎉 Entrega concluída!' : 'Status atualizado!', 'success');
+        const resultado = await updatePedidoStatus(pedido.id, novoStatus, extra);
+
+        if (novoStatus === 'entregue') {
+            // Entrega acabou — limpa o controle de throttle desse pedido pra não acumular
+            // memória à toa (o app fica aberto o dia inteiro, com várias entregas passando).
+            delete ultimaGravacaoPorPedido[pedido.id];
+        }
+
+        if (resultado?.resultadoEstoque?.itensComEstoqueInsuficiente?.length > 0) {
+            showToast('⚠️ Estoque ficou negativo pra algum item — avisa a loja', 'error');
+        } else {
+            showToast(novoStatus === 'entregue' ? '🎉 Entrega concluída!' : 'Status atualizado!', 'success');
+        }
         // A lista se atualiza sozinha via onSnapshot
     } catch (error) {
         console.error('Erro ao atualizar status:', error);
         showToast('Erro ao atualizar status', 'error');
-        abaWhatsApp?.close?.();
     }
 }
 
@@ -496,7 +553,16 @@ function iniciarGeolocalizacaoPropria() {
 
             const minhasEmRota = pedidosTodos.filter(p => p.status === 'saiu_entrega' && p.motoboyId === motoboyLogado?.uid);
             minhasEmRota.forEach(pedido => {
+                if (!deveGravarLocalizacao(pedido.id, minhaPosicaoAtual.lat, minhaPosicaoAtual.lng)) return;
+
                 atualizarLocalizacaoPedido(pedido.id, minhaPosicaoAtual.lat, minhaPosicaoAtual.lng)
+                    .then(() => {
+                        ultimaGravacaoPorPedido[pedido.id] = {
+                            lat: minhaPosicaoAtual.lat,
+                            lng: minhaPosicaoAtual.lng,
+                            timestamp: Date.now()
+                        };
+                    })
                     .catch(err => console.error('Erro ao enviar localização:', err));
             });
         },

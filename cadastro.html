@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crie sua loja - ArretadoGo</title>
+    <link rel="stylesheet" href="style.css?v=2">
+    <style>
+        * { box-sizing: border-box; }
+        body { background: #fff; font-family: -apple-system, sans-serif; }
+
+        /* ---- Topbar ---- */
+        .cad-topbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 24px; border-bottom: 1px solid #F0F0F2;
+        }
+        .cad-topbar-brand { font-weight: 800; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+        .cad-voltar {
+            background: none; border: none; color: #666; font-size: 13.5px; cursor: pointer;
+            display: flex; align-items: center; gap: 4px;
+        }
+        .cad-voltar:hover { color: var(--primary-color, #C20000); }
+
+        /* ---- Split layout ---- */
+        .cad-split { display: grid; grid-template-columns: 1fr 1fr; min-height: calc(100vh - 64px); }
+        @media (max-width: 900px) { .cad-split { grid-template-columns: 1fr; } }
+
+        /* ---- Painel de marca (esquerda) ---- */
+        .cad-brand-panel {
+            background: radial-gradient(120% 160% at 15% -10%, #2b0000 0%, #14090b 55%, #0a0a0c 100%);
+            color: #fff; padding: 52px 44px; position: relative; overflow: hidden;
+        }
+        .cad-brand-panel::before {
+            content: ''; position: absolute; inset: 0;
+            background: radial-gradient(circle at 20% 20%, rgba(255,193,7,0.12), transparent 40%),
+                        radial-gradient(circle at 80% 10%, rgba(194,0,0,0.3), transparent 45%);
+            pointer-events: none;
+        }
+        .cad-brand-panel > * { position: relative; }
+        .cad-hero-badge {
+            display: inline-flex; align-items: center; gap: 6px; background: rgba(255,193,7,0.14);
+            color: #FFC107; border: 1px solid rgba(255,193,7,0.3); font-size: 12px; font-weight: 700;
+            padding: 6px 14px; border-radius: 20px; margin-bottom: 20px;
+        }
+        .cad-brand-panel h1 { font-size: 30px; font-weight: 800; margin: 0 0 12px; line-height: 1.25; }
+        .cad-brand-panel > p { color: #c7c7cf; font-size: 15px; margin-bottom: 32px; }
+
+        .cad-planos-lista { display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px; }
+        .plano-card {
+            background: rgba(255,255,255,0.05); border: 1.5px solid rgba(255,255,255,0.12); border-radius: 14px;
+            padding: 14px 16px; cursor: pointer; transition: all .15s ease; display: flex; align-items: center; gap: 12px;
+        }
+        .plano-card:hover { background: rgba(255,255,255,0.09); }
+        .plano-card.selecionado { border-color: #FFC107; background: rgba(255,193,7,0.1); }
+        .plano-radio {
+            width: 18px; height: 18px; min-width: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .plano-card.selecionado .plano-radio { border-color: #FFC107; }
+        .plano-card.selecionado .plano-radio::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #FFC107; }
+        .plano-card-info { flex: 1; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        .plano-card-info h3 { margin: 0; font-size: 14.5px; }
+        .plano-card-info .plano-preco { font-size: 15px; font-weight: 800; color: #FFC107; }
+        .plano-card-resumo { font-size: 11.5px; color: #a3a3ab; width: 100%; margin-top: 2px; }
+        .plano-badge-mini {
+            background: linear-gradient(135deg, #FFC107, #FF9800); color: #1a1a1a; font-size: 9.5px; font-weight: 800;
+            padding: 2px 8px; border-radius: 10px; margin-left: 6px; vertical-align: middle;
+        }
+
+        .cad-trust-row { display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #d8d8de; }
+        .cad-trust-row span { display: flex; align-items: center; gap: 8px; }
+
+        /* ---- Painel do formulário (direita) ---- */
+        .cad-form-panel { display: flex; align-items: center; justify-content: center; padding: 48px 24px; }
+        .cad-form-card { width: 100%; max-width: 420px; }
+        .cad-form-card h2 { margin: 0 0 4px; font-size: 21px; }
+        .cad-form-card > p { color: #888; font-size: 13.5px; margin-bottom: 20px; }
+
+        .cad-plano-resumo {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            background: linear-gradient(135deg, #FFF8E1, #FFF3CD); border: 1px solid #FFE59A;
+            border-radius: 12px; padding: 10px 14px; margin-bottom: 18px; font-size: 13px;
+        }
+        .cad-plano-resumo b { font-size: 14px; }
+
+        .cad-form-card .form-label { font-size: 12.5px; font-weight: 700; color: #555; margin: 0 0 5px 2px; display: block; }
+        .cad-form-card .form-group { margin-bottom: 14px; }
+        .cad-form-card .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .cad-form-card .input-field { border-radius: 10px; }
+        .slug-preview { font-size: 12px; color: #999; margin: -8px 0 12px; word-break: break-all; }
+        .slug-preview.ok { color: #2e7d32; }
+        .slug-preview.erro { color: #B91C1C; }
+
+        .cad-whatsapp-field { display: flex; gap: 8px; }
+        .cad-whatsapp-prefixo {
+            flex: 0 0 58px; display: flex; align-items: center; justify-content: center;
+            background: #F5F5F7; border: 1px solid #E4E4E8; border-radius: 10px; font-size: 14px; font-weight: 700; color: #555;
+        }
+        .cad-whatsapp-field .input-field { flex: 1; }
+
+        .cad-termos {
+            display: flex; align-items: flex-start; gap: 9px; font-size: 12.5px; color: #666; margin: 6px 0 16px; line-height: 1.5;
+        }
+        .cad-termos input { margin-top: 3px; }
+        .cad-termos a { color: var(--primary-color, #C20000); font-weight: 600; text-decoration: none; }
+        .cad-termos a:hover { text-decoration: underline; }
+
+        .cad-form-card .btn { border-radius: 10px; padding: 13px; font-size: 15px; }
+        .cad-seguranca {
+            display: flex; justify-content: center; gap: 14px; margin-top: 16px; font-size: 11.5px; color: #999; flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="cad-topbar">
+        <div class="cad-topbar-brand">🍽️ ArretadoGo</div>
+        <button type="button" class="cad-voltar" onclick="history.back()">← Voltar</button>
+    </div>
+
+    <div class="cad-split">
+        <!-- Painel de marca: proposta de valor + escolha do plano -->
+        <aside class="cad-brand-panel">
+            <span class="cad-hero-badge">🎁 7 DIAS GRÁTIS • SEM COMPROMISSO</span>
+            <h1>Comece a vender pelo ArretadoGo hoje</h1>
+            <p>Cadastre-se gratuitamente e tenha sua loja pronta em poucos minutos.</p>
+
+            <div class="cad-planos-lista" id="planosGrid">
+                <div class="plano-card" data-plano="basico">
+                    <div class="plano-radio"></div>
+                    <div class="plano-card-info">
+                        <h3>Básico</h3>
+                        <span class="plano-preco">R$ 39,90<span style="font-size:11px; font-weight:500; color:#a3a3ab;">/mês</span></span>
+                        <div class="plano-card-resumo">Até 30 produtos · 1 motoboy · sem cupons</div>
+                    </div>
+                </div>
+                <div class="plano-card selecionado" data-plano="intermediario">
+                    <div class="plano-radio"></div>
+                    <div class="plano-card-info">
+                        <h3>Intermediário <span class="plano-badge-mini">MAIS ESCOLHIDO</span></h3>
+                        <span class="plano-preco">R$ 59,90<span style="font-size:11px; font-weight:500; color:#a3a3ab;">/mês</span></span>
+                        <div class="plano-card-resumo">Produtos ilimitados · até 3 motoboys · cupons</div>
+                    </div>
+                </div>
+                <div class="plano-card" data-plano="premium">
+                    <div class="plano-radio"></div>
+                    <div class="plano-card-info">
+                        <h3>Premium</h3>
+                        <span class="plano-preco">R$ 79,90<span style="font-size:11px; font-weight:500; color:#a3a3ab;">/mês</span></span>
+                        <div class="plano-card-resumo">Tudo ilimitado · cupons · relatórios avançados</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cad-trust-row">
+                <span>⚡ Sua loja no ar em minutos</span>
+                <span>🔓 Sem fidelidade — cancele quando quiser</span>
+                <span>📦 Pedidos e rastreamento inclusos</span>
+            </div>
+        </aside>
+
+        <!-- Painel do formulário -->
+        <div class="cad-form-panel">
+            <div class="cad-form-card">
+                <h2>📝 Seus dados</h2>
+                <p>Sua loja entra no ar na hora, com 7 dias de teste grátis.</p>
+
+                <div class="cad-plano-resumo">
+                    <span>Plano escolhido:</span>
+                    <b id="resumoPlanoNome">Intermediário — R$ 59,90/mês</b>
+                </div>
+
+                <form id="cadastroForm">
+                    <div class="form-group">
+                        <label class="form-label" for="cadNomeLoja">Nome da loja</label>
+                        <input type="text" id="cadNomeLoja" class="input-field" placeholder="Ex: Pizzaria do João" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="cadSlug">Endereço da loja</label>
+                        <input type="text" id="cadSlug" class="input-field" placeholder="ex: pizzariax" required pattern="[a-z0-9-]+">
+                        <div class="slug-preview" id="slugPreview"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="cadWhatsapp">WhatsApp da loja</label>
+                        <div class="cad-whatsapp-field">
+                            <span class="cad-whatsapp-prefixo">+55</span>
+                            <input type="tel" id="cadWhatsapp" class="input-field" placeholder="DDD + número" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row-2">
+                        <div class="form-group">
+                            <label class="form-label" for="cadEmail">Seu e-mail</label>
+                            <input type="email" id="cadEmail" class="input-field" placeholder="voce@email.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="cadEmailConfirma">Confirmar e-mail</label>
+                            <input type="email" id="cadEmailConfirma" class="input-field" placeholder="voce@email.com" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row-2">
+                        <div class="form-group">
+                            <label class="form-label" for="cadSenha">Crie uma senha</label>
+                            <input type="password" id="cadSenha" class="input-field" placeholder="Mín. 6 caracteres" required minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="cadSenhaConfirma">Confirmar senha</label>
+                            <input type="password" id="cadSenhaConfirma" class="input-field" placeholder="Repita a senha" required minlength="6">
+                        </div>
+                    </div>
+
+                    <label class="cad-termos">
+                        <input type="checkbox" id="cadTermos" required>
+                        <span>Li e aceito os <a href="#" onclick="return false;">Termos de Uso</a> e a <a href="#" onclick="return false;">Política de Privacidade</a>.</span>
+                    </label>
+
+                    <button type="submit" class="btn btn-primary" id="cadastroBtn" style="width:100%;">Criar minha loja</button>
+                </form>
+
+                <div class="cad-seguranca">
+                    <span>🔒 Dados protegidos</span>
+                    <span>✅ Sem cartão no cadastro</span>
+                    <span>🎁 7 dias grátis</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="firebase-config.js?v=2"></script>
+    <script src="cadastro.js?v=2"></script>
+</body>
+</html>
