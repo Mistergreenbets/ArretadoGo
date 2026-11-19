@@ -149,7 +149,7 @@ async function fazerLoginSA(e) {
         // onAuthStateChanged cuida do resto
     } catch (error) {
         console.error('Erro no login SA:', error);
-        erroBox.textContent = 'E-mail ou senha inválidos.';
+        erroBox.textContent = 'E-mail ou senha inválidos. (código: ' + (error?.code || error?.message || 'desconhecido') + ')';
         erroBox.style.display = 'block';
     }
 }
